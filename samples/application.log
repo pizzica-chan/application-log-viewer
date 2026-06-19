@@ -1,0 +1,10 @@
+2026-06-15 00:19:10.100[main][INFO][com.example.StartupRunner] - アプリケーションを起動しました
+2026-06-15 00:19:11.200[http-nio-8080-exec-1][INFO][com.example.web.HogeController] - GET /api/users を受信
+2026-06-15 00:19:11.705[ajp-nio-8009-exec-24][TRACE][org.hogehoge.jdbc.HogeUtil] - ログ本文
+2026-06-15 00:19:12.300[ajp-nio-8009-exec-24][ERROR][com.example.web.HogeController] - 処理に失敗しました
+java.lang.NullPointerException: null
+	at com.example.web.HogeController.process(HogeController.java:42)
+	at com.example.service.HogeService.execute(HogeService.java:18)
+2026-06-15 00:19:13.100[main][WARN][com.example.web.HogeController] - リトライを実行します (attempt=1)
+2026-06-15 00:19:14.000[pool-1-thread-1][DEBUG][com.example.db.DatabasePool] - コネクションを取得しました
+2026-05-27 00:00:03.965[HogeController][ERROR][main] - 旧形式ログ（Logger][LEVEL][Thread] も対応
