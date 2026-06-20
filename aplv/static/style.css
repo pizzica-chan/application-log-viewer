@@ -220,7 +220,7 @@ td.message {
 }
 
 td.source {
-  max-width: 360px;
+  max-width: 520px;
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: Consolas, "Courier New", monospace;

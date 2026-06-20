@@ -62,11 +62,11 @@ class LogViewerHandler(BaseHTTPRequestHandler):
 
     @classmethod
     def _source_names(cls) -> list[str]:
-        return [p.name for p in cls.log_paths]
+        return [str(p.resolve()) for p in cls.log_paths]
 
     @classmethod
     def _source_name(cls, entry: LogEntry) -> str:
-        return cls.log_paths[entry.file_id].name
+        return str(cls.log_paths[entry.file_id].resolve())
 
     @classmethod
     def _read_entry_text(cls, reader: LineReader, entry: LogEntry) -> str:
