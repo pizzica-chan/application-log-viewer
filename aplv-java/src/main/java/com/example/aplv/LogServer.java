@@ -87,6 +87,7 @@ public final class LogServer {
         server.createContext("/", new RootHandler());
 
         System.out.println("Application Log Viewer (Java): http://" + host + ":" + port);
+        System.out.println("インデックス: " + IndexStore.tmpIndexDir() + " (APLV_HOME で repo 変更可)");
         if (logRoot != null) {
             System.out.println("ログディレクトリ: " + PathUtil.normalizePath(logRoot));
         }
@@ -160,11 +161,18 @@ public final class LogServer {
                     LogIndex.clearIndex(newConn);
                     total = 0;
                 } else {
+                    IndexStore.ensureTmpDirFor(root);
                     newConn = LogIndex.openOrCreate(root);
                     if (paths.isEmpty()) {
+                        newConn.close();
+                        IndexStore.deleteIndexFiles(root);
+                        newConn = LogIndex.openOrCreate(root);
                         LogIndex.clearIndex(newConn);
                         total = 0;
                     } else if (LogIndex.needsRebuild(newConn, paths)) {
+                        newConn.close();
+                        IndexStore.deleteIndexFiles(root);
+                        newConn = LogIndex.openOrCreate(root);
                         total = LogIndex.buildIndex(newConn, paths, loadProgress::set);
                     } else {
                         total = LogIndex.entryCount(newConn);

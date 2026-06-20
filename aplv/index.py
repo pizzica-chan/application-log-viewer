@@ -10,6 +10,7 @@ from typing import Callable
 
 from .parser import parse_line
 from .path_util import normalize_path
+from . import index_store
 
 BATCH_SIZE = 2000
 
@@ -71,15 +72,16 @@ class EntryRow:
 
 
 def index_dir(log_root: Path) -> Path:
-    return log_root / ".aplv"
+    """後方互換。実際の DB は repo/tmp/aplv に保存される。"""
+    return index_store.tmp_index_dir()
 
 
 def index_db_path(log_root: Path) -> Path:
-    return index_dir(log_root) / "index.db"
+    return index_store.index_db_path(log_root)
 
 
 def open_or_create(log_root: Path) -> sqlite3.Connection:
-    index_dir(log_root).mkdir(parents=True, exist_ok=True)
+    index_store.ensure_tmp_dir_for(log_root)
     conn = sqlite3.connect(str(index_db_path(log_root)), check_same_thread=False)
     conn.executescript(_SCHEMA)
     return conn

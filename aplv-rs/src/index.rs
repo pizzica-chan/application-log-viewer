@@ -4,6 +4,7 @@
 //! スタックトレース本文は DB に載せず、[`read_entry_raw`] でオンデマンド読み出し。
 
 use crate::path_util::normalize_path;
+use crate::index_store;
 use crate::parser::{parse_line, ParsedLine};
 use chrono::NaiveDateTime;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -30,19 +31,19 @@ pub struct EntryRow {
     pub source: String,
 }
 
-/// インデックス保存ディレクトリ `{log_root}/.aplv`。
-pub fn index_dir(log_root: &Path) -> PathBuf {
-    log_root.join(".aplv")
+/// インデックス保存ディレクトリ `{repo}/tmp/aplv`。
+pub fn index_dir(_log_root: &Path) -> PathBuf {
+    index_store::tmp_index_dir()
 }
 
 /// SQLite DB ファイルパス。
 pub fn index_db_path(log_root: &Path) -> PathBuf {
-    index_dir(log_root).join("index.db")
+    index_store::index_db_path(log_root)
 }
 
 /// DB を開き、スキーマがなければ作成する。
 pub fn open_or_create(log_root: &Path) -> rusqlite::Result<Connection> {
-    std::fs::create_dir_all(index_dir(log_root)).ok();
+    index_store::ensure_tmp_dir_for(Some(log_root));
     let conn = Connection::open(index_db_path(log_root))?;
     conn.execute_batch(
         "

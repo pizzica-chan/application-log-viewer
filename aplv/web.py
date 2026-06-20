@@ -98,15 +98,22 @@ class LogViewerHandler(BaseHTTPRequestHandler):
                     index.clear_index(conn)
                     total = 0
                 else:
+                    index_store.ensure_tmp_dir_for(root)
                     conn = index.open_or_create(root)
 
                     def progress(count: int) -> None:
                         cls.load_progress = count
 
                     if not paths:
+                        conn.close()
+                        index_store.delete_index_files(root)
+                        conn = index.open_or_create(root)
                         index.clear_index(conn)
                         total = 0
                     elif index.needs_rebuild(conn, paths):
+                        conn.close()
+                        index_store.delete_index_files(root)
+                        conn = index.open_or_create(root)
                         total = index.build_index(conn, paths, progress)
                     else:
                         total = index.entry_count(conn)

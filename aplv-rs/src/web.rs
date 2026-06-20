@@ -119,13 +119,20 @@ impl AppState {
 
     /// 同期的なインデックス構築（`spawn_blocking` 内から呼ぶ）。
     fn load_blocking(&self, root: PathBuf, paths: Vec<PathBuf>) -> Result<(), String> {
-        let conn = index::open_or_create(&root).map_err(|e| e.to_string())?;
+        index_store::ensure_tmp_dir_for(Some(&root));
+        let mut conn = index::open_or_create(&root).map_err(|e| e.to_string())?;
         let rebuild = index::needs_rebuild(&conn, &paths).map_err(|e| e.to_string())?;
         let progress = self.load_progress.clone();
         let total = if paths.is_empty() {
+            drop(conn);
+            index_store::delete_index_files(&root);
+            conn = index::open_or_create(&root).map_err(|e| e.to_string())?;
             index::clear_index(&conn).map_err(|e| e.to_string())?;
             0
         } else if rebuild {
+            drop(conn);
+            index_store::delete_index_files(&root);
+            conn = index::open_or_create(&root).map_err(|e| e.to_string())?;
             index::build_index(&conn, &paths, |n| {
                 progress.store(n, Ordering::Relaxed);
             })

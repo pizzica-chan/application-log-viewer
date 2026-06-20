@@ -54,6 +54,6 @@ async fn main() {
         .await
         .expect("bind");
     println!("Application Log Viewer (Rust): http://{addr}");
-    println!("インデックス: {{ログディレクトリ}}/.aplv/index.db");
+    println!("インデックス: {{repo}}/tmp/aplv/ (APLV_HOME で repo 変更可)");
     axum::serve(listener, app).await.expect("serve");
 }

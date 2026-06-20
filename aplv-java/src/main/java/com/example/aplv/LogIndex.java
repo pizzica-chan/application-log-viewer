@@ -73,19 +73,19 @@ public final class LogIndex {
         public String source;
     }
 
-    /** インデックス保存ディレクトリ {@code {log_root}/.aplv}。 */
+    /** インデックス保存ディレクトリ {@code {repo}/tmp/aplv}。 */
     public static Path indexDir(Path logRoot) {
-        return logRoot.resolve(".aplv");
+        return IndexStore.tmpIndexDir();
     }
 
     /** SQLite DB ファイルパス。 */
     public static Path indexDbPath(Path logRoot) {
-        return indexDir(logRoot).resolve("index.db");
+        return IndexStore.indexDbPath(logRoot);
     }
 
     /** DB を開き、スキーマがなければ作成する。 */
     public static Connection openOrCreate(Path logRoot) throws SQLException, IOException {
-        Files.createDirectories(indexDir(logRoot));
+        IndexStore.ensureTmpDirFor(logRoot);
         String url = "jdbc:sqlite:" + indexDbPath(logRoot).toString();
         Connection conn = DriverManager.getConnection(url);
         initSchema(conn);

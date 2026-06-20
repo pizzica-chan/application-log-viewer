@@ -12,4 +12,7 @@ build/
 aplv-rs/target/
 
 # SQLite index (local)
+tmp/
+
+# Legacy index under log directories (no longer created)
 .aplv/
