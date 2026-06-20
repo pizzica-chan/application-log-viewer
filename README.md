@@ -117,3 +117,14 @@ python -m aplv --dir samples
 ## ライセンス
 
 MIT
+
+## Rust + SQLite 版
+
+大容量ログ向けに **Rust + SQLite** 実装（`aplv-rs/`）を同梱しています。Python 版はそのまま利用できます。
+
+```powershell
+cd aplv-rs
+cargo run --release -- --dir ..\samples --port 8767
+```
+
+詳細は [aplv-rs/README.md](aplv-rs/README.md) を参照してください。

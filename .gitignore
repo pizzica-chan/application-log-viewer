@@ -7,3 +7,9 @@ dist/
 build/
 .pytest_cache/
 .mypy_cache/
+
+# Rust
+aplv-rs/target/
+
+# SQLite index (local)
+.aplv/
