@@ -130,3 +130,27 @@ cargo run --release -- --dir ..\samples --port 8767
 ```
 
 詳細は [aplv-rs/README.md](aplv-rs/README.md) を参照してください。
+
+## Java 8 + SQLite 版
+
+数 GB 級の大容量ログ向けに **Java 8 + SQLite** 実装（`aplv-java/`）を同梱しています。
+依存関係管理は Maven、Web サーバ機能は JDK 内蔵 `com.sun.net.httpserver` による自前実装です（Tomcat 等不要）。
+
+```powershell
+cd aplv-java
+mvn -q clean package
+java -jar target\aplv-java.jar --dir ..\samples --port 8768
+```
+
+複数ファイルの並列パース・byte offset によるオンデマンド読み出し・SQLite インデックス永続化で大容量ログに対応します。
+詳細は [aplv-java/README.md](aplv-java/README.md) を参照してください。
+
+## 3 実装の比較
+
+| | Python 版 | Rust 版 | Java 8 版 |
+|---|-----------|---------|-----------|
+| ディレクトリ | `aplv/` | `aplv-rs/` | `aplv-java/` |
+| 依存管理 | pip（標準ライブラリのみ） | Cargo | Maven |
+| Web サーバ | `http.server`（標準） | axum | `com.sun.net.httpserver`（自前） |
+| インデックス | SQLite | SQLite | SQLite |
+| ポート | 8766 | 8767 | 8768 |

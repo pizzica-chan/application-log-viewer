@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Application Log Viewer</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Application Log Viewer</h1>
+    <p id="meta">読み込み中...</p>
+  </header>
+
+  <section class="source-dir">
+    <label>
+      ログディレクトリ
+      <div class="dir-input">
+        <input id="log-dir" placeholder="例: C:\logs\app">
+        <button id="browse" type="button">参照...</button>
+        <button id="load-dir" type="button">読み込み</button>
+      </div>
+    </label>
+    <p id="file-list" class="file-list"></p>
+  </section>
+
+  <section class="filters">
+    <label>
+      レベル
+      <input id="level" placeholder="ERROR / WARN,ERROR">
+    </label>
+    <label>
+      ロガー (正規表現)
+      <input id="logger" placeholder="HogeController">
+    </label>
+    <label>
+      スレッド (正規表現)
+      <input id="thread" placeholder="main">
+    </label>
+    <label>
+      メッセージ (正規表現)
+      <input id="message" placeholder="NullPointer">
+    </label>
+    <label>
+      開始
+      <input id="since" type="datetime-local">
+    </label>
+    <label>
+      終了
+      <input id="until" type="datetime-local">
+    </label>
+    <label>
+      全文検索
+      <input id="grep" placeholder="Exception">
+    </label>
+    <label>
+      ソースファイル (正規表現)
+      <input id="source" placeholder="C:\logs\app\application.log">
+    </label>
+    <button id="search">検索</button>
+    <button id="reset" type="button">リセット</button>
+  </section>
+
+  <section class="toolbar">
+    <span id="result-count"></span>
+    <div class="pager">
+      <button id="prev" disabled>前へ</button>
+      <span id="page-info"></span>
+      <button id="next" disabled>次へ</button>
+    </div>
+  </section>
+
+  <div class="table-wrap">
+    <div id="loading-overlay" class="loading-overlay" hidden role="status" aria-live="polite">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <p id="loading-text">読み込み中...</p>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>時刻</th>
+          <th>Level</th>
+          <th>Logger</th>
+          <th>Thread</th>
+          <th>Message</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <dialog id="browse-dialog">
+    <form method="dialog" class="browse-form">
+      <h2>ディレクトリを選択</h2>
+      <p id="browse-current" class="browse-current"></p>
+      <ul id="browse-list" class="browse-list"></ul>
+      <div class="browse-actions">
+        <button id="browse-up" type="button">上へ</button>
+        <button id="browse-select" type="button" value="select">このディレクトリを選択</button>
+        <button type="submit" value="cancel">キャンセル</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="detail">
+    <form method="dialog">
+      <pre id="detail-body"></pre>
+      <button>閉じる</button>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
