@@ -5,6 +5,9 @@ description = "Java アプリケーションログを時系列統合・検索す
 readme = "README.md"
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
 [project.scripts]
 aplv = "aplv.cli:main"
 
@@ -18,3 +21,6 @@ include = ["aplv*"]
 
 [tool.setuptools.package-data]
 aplv = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
