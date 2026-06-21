@@ -34,7 +34,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            long total = LogIndex.buildIndex(conn, Collections.singletonList(log), null);
+            long total = LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
             assertEquals(2, total);
 
             LogIndex.EntryRow err = LogIndex.findEntry(conn, PathUtil.normalizePath(log), 1);
@@ -52,7 +52,7 @@ class LogIndexTest {
         List<Path> paths = Collections.singletonList(log);
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, paths, null);
+            LogIndex.buildIndex(conn, paths, null, false);
             assertFalse(LogIndex.needsRebuild(conn, paths));
 
             Files.write(log,
@@ -71,7 +71,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Bar] - info two\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
 
             QueryFilter byLevel = new QueryFilter();
             byLevel.levels = QueryFilter.parseLevelFilter("ERROR");
@@ -105,7 +105,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Bar] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, true);
             assertTrue(LogIndex.ftsAvailable(conn));
 
             // スタックトレース本文を FTS 経由で検索。
@@ -126,6 +126,28 @@ class LogIndexTest {
     }
 
     @Test
+    void grepWorksWithoutFts(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15 00:00:01.000[main][ERROR][com.example.Foo] - boom\n"
+                        + "java.lang.NullPointerException: bad\n"
+                        + "\tat com.example.Foo.run(Foo.java:10)\n"
+                        + "2026-06-15 00:00:02.000[main][INFO][com.example.Bar] - ok\n");
+
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            // FTS 無効でも全件スキャンで grep が機能する。
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            assertFalse(LogIndex.ftsAvailable(conn));
+
+            QueryFilter hit = new QueryFilter();
+            hit.grepRe = QueryFilter.compileRegex("NullPointerException");
+            hit.grepText = "NullPointerException";
+            LogQuery.Result r = LogQuery.queryLogs(conn, hit, 0, 10);
+            assertEquals(1, r.total);
+            assertEquals("com.example.Foo", r.page.get(0).logger);
+        }
+    }
+
+    @Test
     void parallelIndexAcrossMultipleFiles(@TempDir Path tmp) throws Exception {
         Path a = writeLog(tmp, "application.log",
                 "2026-06-15 00:00:01.000[main][INFO][com.example.A] - a1\n"
@@ -134,7 +156,7 @@ class LogIndexTest {
                 "2026-06-15 00:00:02.000[main][WARN][com.example.B] - b1\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            long total = LogIndex.buildIndex(conn, Arrays.asList(a, b), null);
+            long total = LogIndex.buildIndex(conn, Arrays.asList(a, b), null, false);
             assertEquals(3, total);
 
             QueryFilter all = new QueryFilter();

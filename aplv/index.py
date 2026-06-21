@@ -121,6 +121,11 @@ def recreate_fts(conn: sqlite3.Connection) -> bool:
         return False
 
 
+def drop_fts(conn: sqlite3.Connection) -> None:
+    """FTS5 テーブルを削除する（--fts 無効時に既存索引を残さないため）。"""
+    conn.execute("DROP TABLE IF EXISTS entries_fts")
+
+
 def _file_fingerprint(paths: list[Path]) -> str:
     parts: list[str] = []
     for path in paths:
@@ -190,9 +195,15 @@ def build_index(
     conn: sqlite3.Connection,
     paths: list[Path],
     on_progress: Callable[[int], None] | None = None,
+    *,
+    enable_fts: bool = False,
 ) -> int:
     clear_index(conn)
-    has_fts = recreate_fts(conn)
+    if enable_fts:
+        has_fts = recreate_fts(conn)
+    else:
+        drop_fts(conn)
+        has_fts = False
     fp = _file_fingerprint(paths)
     total = 0
     next_id = 1

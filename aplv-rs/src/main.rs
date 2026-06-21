@@ -20,6 +20,11 @@ struct Args {
 
     #[arg(long, default_value = "8767")]
     port: u16,
+
+    /// 全文検索を SQLite FTS5 で高速化する（インデックス構築は遅くなる。
+    /// 未指定時は FTS5 を作らず全件スキャンで grep する）
+    #[arg(long)]
+    fts: bool,
 }
 
 /// Python 版と共有する静的ファイルの場所を解決する。
@@ -39,7 +44,7 @@ async fn main() {
         std::process::exit(1);
     }
 
-    let state = AppState::new(static_dir);
+    let state = AppState::new(static_dir, args.fts);
     if let Some(dir) = args.dir {
         let root = dir.canonicalize().expect("ディレクトリを解決");
         let paths = discovery::find_log_files(&root).expect("ログ探索");
@@ -55,5 +60,9 @@ async fn main() {
         .expect("bind");
     println!("Application Log Viewer (Rust): http://{addr}");
     println!("インデックス: {{repo}}/tmp/aplv/ (APLV_HOME で repo 変更可)");
+    println!(
+        "全文検索 FTS5: {}",
+        if args.fts { "有効" } else { "無効（--fts で有効化）" }
+    );
     axum::serve(listener, app).await.expect("serve");
 }

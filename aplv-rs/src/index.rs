@@ -106,6 +106,11 @@ fn recreate_fts(conn: &Connection) -> bool {
         .is_ok()
 }
 
+/// FTS5 テーブルを削除する（--fts 無効時に既存索引を残さないため）。
+fn drop_fts(conn: &Connection) {
+    let _ = conn.execute_batch("DROP TABLE IF EXISTS entries_fts");
+}
+
 /// 対象ファイル集合のフィンガープリント（パス・mtime・サイズ）。
 fn file_fingerprint(paths: &[PathBuf]) -> std::io::Result<String> {
     let mut parts: Vec<String> = Vec::with_capacity(paths.len());
@@ -176,10 +181,16 @@ type EntryTuple = (
 pub fn build_index(
     conn: &Connection,
     paths: &[PathBuf],
+    enable_fts: bool,
     mut on_progress: impl FnMut(u64),
 ) -> rusqlite::Result<u64> {
     clear_index(conn)?;
-    let has_fts = recreate_fts(conn);
+    let has_fts = if enable_fts {
+        recreate_fts(conn)
+    } else {
+        drop_fts(conn);
+        false
+    };
     let fp = file_fingerprint(paths).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
     let mut total: u64 = 0;
@@ -443,7 +454,7 @@ mod tests {
         );
 
         let conn = open_or_create(&tmp).unwrap();
-        let total = build_index(&conn, &[log.clone()], |_| {}).unwrap();
+        let total = build_index(&conn, &[log.clone()], false, |_| {}).unwrap();
         assert_eq!(total, 2);
 
         let err = find_entry(&conn, &normalize_path(&log), 1, None)
@@ -473,7 +484,7 @@ mod tests {
         );
 
         let conn = open_or_create(&tmp).unwrap();
-        build_index(&conn, &[log.clone()], |_| {}).unwrap();
+        build_index(&conn, &[log.clone()], false, |_| {}).unwrap();
         assert!(!needs_rebuild(&conn, &[log.clone()]).unwrap());
 
         fs::OpenOptions::new()
@@ -499,7 +510,7 @@ mod tests {
         );
 
         let conn = open_or_create(&tmp).unwrap();
-        build_index(&conn, &[log], |_| {}).unwrap();
+        build_index(&conn, &[log], false, |_| {}).unwrap();
         let paths = list_file_paths(&conn).unwrap();
         assert_eq!(paths.len(), 1);
         assert!(!paths[0].starts_with(r"\\?\"));

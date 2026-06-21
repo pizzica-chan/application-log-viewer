@@ -52,6 +52,8 @@ public final class LogServer {
 
     private volatile Path logRoot;
     private volatile List<Path> logPaths = Collections.emptyList();
+    /** 全文検索 FTS5 を構築するか（--fts 指定時のみ true）。 */
+    private final boolean enableFts;
 
     private volatile String loadStatus = "idle"; // idle / loading / ready / error
     private volatile String loadError;
@@ -64,8 +66,13 @@ public final class LogServer {
     private final Map<String, byte[]> staticCache = new HashMap<>();
 
     public LogServer(Path logRoot, List<Path> logPaths) {
+        this(logRoot, logPaths, false);
+    }
+
+    public LogServer(Path logRoot, List<Path> logPaths, boolean enableFts) {
         this.logRoot = logRoot;
         this.logPaths = logPaths != null ? logPaths : Collections.<Path>emptyList();
+        this.enableFts = enableFts;
     }
 
     /** サーバを起動して待ち受ける（戻らない）。 */
@@ -88,6 +95,7 @@ public final class LogServer {
 
         System.out.println("Application Log Viewer (Java): http://" + host + ":" + port);
         System.out.println("インデックス: " + IndexStore.tmpIndexDir() + " (APLV_HOME で repo 変更可)");
+        System.out.println("全文検索 FTS5: " + (enableFts ? "有効" : "無効（--fts で有効化）"));
         if (logRoot != null) {
             System.out.println("ログディレクトリ: " + PathUtil.normalizePath(logRoot));
         }
@@ -173,7 +181,7 @@ public final class LogServer {
                         newConn.close();
                         IndexStore.deleteIndexFiles(root);
                         newConn = LogIndex.openOrCreate(root);
-                        total = LogIndex.buildIndex(newConn, paths, loadProgress::set);
+                        total = LogIndex.buildIndex(newConn, paths, loadProgress::set, enableFts);
                     } else {
                         total = LogIndex.entryCount(newConn);
                         loadProgress.set(total);

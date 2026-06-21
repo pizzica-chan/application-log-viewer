@@ -21,6 +21,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
+    parser.add_argument(
+        "--fts",
+        action="store_true",
+        help="全文検索を SQLite FTS5 で高速化する（インデックス構築は遅くなる。"
+        "未指定時は FTS5 を作らず全件スキャンで grep する）",
+    )
     args = parser.parse_args(argv)
 
     paths: list[Path] = []
@@ -32,5 +38,5 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         paths = find_log_files(log_root)
 
-    serve(paths, host=args.host, port=args.port, log_root=log_root)
+    serve(paths, host=args.host, port=args.port, log_root=log_root, enable_fts=args.fts)
     return 0

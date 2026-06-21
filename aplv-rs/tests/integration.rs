@@ -36,7 +36,7 @@ fn index_sample_log() {
 
     let conn = index::open_or_create(&tmp).unwrap();
     let paths = vec![sample];
-    let total = index::build_index(&conn, &paths, |_| {}).unwrap();
+    let total = index::build_index(&conn, &paths, false, |_| {}).unwrap();
     assert!(total >= 6);
     assert_eq!(index::entry_count(&conn).unwrap(), total);
     assert!(!index::needs_rebuild(&conn, &paths).unwrap());
@@ -63,7 +63,7 @@ fn query_error_entries_from_sample_index() {
     std::fs::create_dir_all(&tmp).unwrap();
 
     let conn = index::open_or_create(&tmp).unwrap();
-    index::build_index(&conn, &[sample], |_| {}).unwrap();
+    index::build_index(&conn, &[sample], false, |_| {}).unwrap();
 
     let filter = QueryFilter {
         levels: query::parse_level_filter("ERROR"),
@@ -91,7 +91,7 @@ fn stack_trace_readable_via_grep() {
     std::fs::create_dir_all(&tmp).unwrap();
 
     let conn = index::open_or_create(&tmp).unwrap();
-    index::build_index(&conn, &[sample], |_| {}).unwrap();
+    index::build_index(&conn, &[sample], true, |_| {}).unwrap();
 
     let filter = QueryFilter {
         levels: None,

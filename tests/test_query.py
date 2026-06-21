@@ -74,17 +74,20 @@ def _stacktrace_log(tmp_path: Path) -> Path:
     return log
 
 
-def test_fts_table_created_on_build(tmp_path: Path) -> None:
+def test_fts_table_created_only_when_enabled(tmp_path: Path) -> None:
     log = _sample_log(tmp_path)
     conn = open_or_create(tmp_path)
     build_index(conn, [log])
+    assert not fts_available(conn)  # デフォルトは無効
+
+    build_index(conn, [log], enable_fts=True)
     assert fts_available(conn)
 
 
 def test_grep_uses_fts_and_matches_stacktrace(tmp_path: Path) -> None:
     log = _stacktrace_log(tmp_path)
     conn = open_or_create(tmp_path)
-    build_index(conn, [log])
+    build_index(conn, [log], enable_fts=True)
 
     # スタックトレース本文に対する全文検索（FTS 経由）。
     filt = build_query_filter(grep="NullPointerException")
@@ -94,23 +97,39 @@ def test_grep_uses_fts_and_matches_stacktrace(tmp_path: Path) -> None:
     assert page[0].logger == "com.example.Foo"
 
 
-def test_grep_fts_result_identical_to_scan(tmp_path: Path) -> None:
-    """FTS あり（build_query_filter）と素朴な正規表現スキャンで結果が一致する。"""
+def test_grep_works_without_fts(tmp_path: Path) -> None:
+    """FTS 無効でも全件スキャンで grep が機能する。"""
     log = _stacktrace_log(tmp_path)
     conn = open_or_create(tmp_path)
-    build_index(conn, [log])
+    build_index(conn, [log], enable_fts=False)
+    assert not fts_available(conn)
 
-    fts_total, _ = query_logs(conn, build_query_filter(grep="Foo.run"), 0, 50)
-    scan_total, _ = query_logs(
-        conn, QueryFilter(grep_re=re.compile("Foo.run", re.IGNORECASE)), 0, 50
-    )
+    filt = build_query_filter(grep="NullPointerException")
+    total, page = query_logs(conn, filt, 0, 10)
+    assert total == 1
+    assert page[0].logger == "com.example.Foo"
+
+
+def test_grep_fts_result_identical_to_scan(tmp_path: Path) -> None:
+    """FTS あり/なしで grep の結果が一致する。"""
+    log = _stacktrace_log(tmp_path)
+
+    conn_fts = open_or_create(tmp_path)
+    build_index(conn_fts, [log], enable_fts=True)
+    fts_total, _ = query_logs(conn_fts, build_query_filter(grep="Foo.run"), 0, 50)
+    conn_fts.close()
+
+    conn_scan = open_or_create(tmp_path)
+    build_index(conn_scan, [log], enable_fts=False)
+    scan_total, _ = query_logs(conn_scan, build_query_filter(grep="Foo.run"), 0, 50)
+
     assert fts_total == scan_total == 1
 
 
 def test_grep_no_false_positive(tmp_path: Path) -> None:
     log = _stacktrace_log(tmp_path)
     conn = open_or_create(tmp_path)
-    build_index(conn, [log])
+    build_index(conn, [log], enable_fts=True)
 
     filt = build_query_filter(grep="zzzznotfound")
     total, _ = query_logs(conn, filt, 0, 10)

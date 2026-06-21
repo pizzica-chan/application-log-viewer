@@ -157,6 +157,15 @@ public final class LogIndex {
         }
     }
 
+    /** FTS5 テーブルを削除する（--fts 無効時に既存索引を残さないため）。 */
+    private static void dropFts(Connection conn) {
+        try (Statement st = conn.createStatement()) {
+            st.execute("DROP TABLE IF EXISTS entries_fts");
+        } catch (SQLException e) {
+            // 削除失敗は無視（テーブルが無い場合など）
+        }
+    }
+
     /** 対象ファイル集合のフィンガープリント（パス・mtime・サイズ）。 */
     private static String fileFingerprint(List<Path> paths) throws IOException {
         List<String> parts = new ArrayList<>(paths.size());
@@ -248,21 +257,27 @@ public final class LogIndex {
      *
      * @return 取り込んだエントリ総数
      */
-    public static long buildIndex(Connection conn, List<Path> paths, ProgressCallback progress)
-            throws SQLException, IOException {
+    public static long buildIndex(Connection conn, List<Path> paths, ProgressCallback progress,
+            boolean enableFts) throws SQLException, IOException {
         boolean prevAutoCommit = conn.getAutoCommit();
         conn.setAutoCommit(false);
         try {
-            return buildIndexTx(conn, paths, progress);
+            return buildIndexTx(conn, paths, progress, enableFts);
         } finally {
             conn.setAutoCommit(prevAutoCommit);
         }
     }
 
-    private static long buildIndexTx(Connection conn, List<Path> paths, ProgressCallback progress)
-            throws SQLException, IOException {
+    private static long buildIndexTx(Connection conn, List<Path> paths, ProgressCallback progress,
+            boolean enableFts) throws SQLException, IOException {
         clearIndex(conn);
-        boolean hasFts = recreateFts(conn);
+        boolean hasFts;
+        if (enableFts) {
+            hasFts = recreateFts(conn);
+        } else {
+            dropFts(conn);
+            hasFts = false;
+        }
         String fp = fileFingerprint(paths);
 
         // files テーブルを先に登録（FK 整合のため）。

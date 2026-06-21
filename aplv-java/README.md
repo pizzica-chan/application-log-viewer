@@ -47,6 +47,7 @@ java -jar target\aplv-java.jar --dir C:\logs\app --port 8768
 | `--dir`  | 起動時に読み込むログディレクトリ（省略時は UI から選択） | — |
 | `--host` | 待ち受けアドレス | `127.0.0.1` |
 | `--port` | 待ち受けポート（Python 8766 / Rust 8767 と競合しない） | `8768` |
+| `--fts`  | 全文検索を FTS5 で高速化（インデックス構築は遅くなる） | 無効 |
 
 ## API（Python / Rust 版と互換）
 

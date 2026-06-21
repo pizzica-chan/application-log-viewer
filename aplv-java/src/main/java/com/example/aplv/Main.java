@@ -24,6 +24,7 @@ public final class Main {
         String host = "127.0.0.1";
         int port = 8768;
         String dir = null;
+        boolean enableFts = false;
 
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
@@ -36,6 +37,9 @@ public final class Main {
                     break;
                 case "--port":
                     port = Integer.parseInt(requireValue(args, ++i, "--port"));
+                    break;
+                case "--fts":
+                    enableFts = true;
                     break;
                 case "-h":
                 case "--help":
@@ -64,7 +68,7 @@ public final class Main {
             }
         }
 
-        LogServer server = new LogServer(logRoot, paths);
+        LogServer server = new LogServer(logRoot, paths, enableFts);
         try {
             server.start(host, port);
         } catch (IOException e) {
@@ -83,9 +87,11 @@ public final class Main {
 
     private static void printUsage() {
         System.out.println("Application Log Viewer (Java 8)");
-        System.out.println("使い方: java -jar aplv-java.jar [--dir <dir>] [--host <host>] [--port <port>]");
+        System.out.println("使い方: java -jar aplv-java.jar [--dir <dir>] [--host <host>] [--port <port>] [--fts]");
         System.out.println("  --dir   起動時に読み込むログディレクトリ（省略時は UI から選択）");
         System.out.println("  --host  待ち受けアドレス（デフォルト 127.0.0.1）");
         System.out.println("  --port  待ち受けポート（デフォルト 8768）");
+        System.out.println("  --fts   全文検索を FTS5 で高速化（インデックス構築は遅くなる。"
+                + "未指定時は全件スキャンで grep）");
     }
 }

@@ -35,10 +35,12 @@ pub struct AppState {
     pub load_progress: Arc<AtomicU64>,
     pub db: Arc<Mutex<rusqlite::Connection>>,
     pub static_dir: PathBuf,
+    /// 全文検索 FTS5 を構築するか（`--fts` 指定時のみ true）。
+    pub enable_fts: bool,
 }
 
 impl AppState {
-    pub fn new(static_dir: PathBuf) -> Self {
+    pub fn new(static_dir: PathBuf, enable_fts: bool) -> Self {
         Self {
             log_root: Arc::new(RwLock::new(None)),
             log_paths: Arc::new(RwLock::new(Vec::new())),
@@ -49,6 +51,7 @@ impl AppState {
                 rusqlite::Connection::open_in_memory().expect("in-memory sqlite"),
             )),
             static_dir,
+            enable_fts,
         }
     }
 
@@ -133,7 +136,7 @@ impl AppState {
             drop(conn);
             index_store::delete_index_files(&root);
             conn = index::open_or_create(&root).map_err(|e| e.to_string())?;
-            index::build_index(&conn, &paths, |n| {
+            index::build_index(&conn, &paths, self.enable_fts, |n| {
                 progress.store(n, Ordering::Relaxed);
             })
             .map_err(|e| e.to_string())?

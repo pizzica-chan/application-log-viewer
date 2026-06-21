@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .discovery import find_log_files
 from . import index
+from . import index_store
 from .query import build_query_filter, parse_datetime, query_logs
 from .path_util import normalize_path
 
@@ -26,6 +27,7 @@ class LogViewerHandler(BaseHTTPRequestHandler):
     load_status: str = "idle"
     load_error: str | None = None
     load_progress: int = 0
+    enable_fts: bool = False
     _load_lock = threading.Lock()
     _db_lock = threading.Lock()
 
@@ -114,7 +116,9 @@ class LogViewerHandler(BaseHTTPRequestHandler):
                         conn.close()
                         index_store.delete_index_files(root)
                         conn = index.open_or_create(root)
-                        total = index.build_index(conn, paths, progress)
+                        total = index.build_index(
+                            conn, paths, progress, enable_fts=cls.enable_fts
+                        )
                     else:
                         total = index.entry_count(conn)
                         cls.load_progress = total
@@ -354,6 +358,7 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8766,
     log_root: Path | None = None,
+    enable_fts: bool = False,
 ) -> None:
     LogViewerHandler.log_paths = [p.resolve() for p in paths]
     LogViewerHandler.log_root = log_root.resolve() if log_root else None
@@ -361,10 +366,12 @@ def serve(
     LogViewerHandler.load_status = "idle"
     LogViewerHandler.load_error = None
     LogViewerHandler.load_progress = 0
+    LogViewerHandler.enable_fts = enable_fts
     if paths:
         LogViewerHandler._start_load()
     server = ThreadingHTTPServer((host, port), LogViewerHandler)
     print(f"Application Log Viewer: http://{host}:{port}")
+    print(f"全文検索 FTS5: {'有効' if enable_fts else '無効（--fts で有効化）'}")
     if LogViewerHandler.log_root:
         print(f"ログディレクトリ: {LogViewerHandler.log_root}")
     print(f"読み込みファイル ({len(paths)}):")

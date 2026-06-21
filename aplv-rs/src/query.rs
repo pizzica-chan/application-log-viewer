@@ -285,7 +285,7 @@ mod tests {
     fn query_filters_by_level_and_grep() {
         let (tmp, log) = sample_log();
         let conn = index::open_or_create(&tmp).unwrap();
-        index::build_index(&conn, &[log], |_| {}).unwrap();
+        index::build_index(&conn, &[log], false, |_| {}).unwrap();
 
         let filter = QueryFilter {
             levels: parse_level_filter("ERROR"),
@@ -350,7 +350,7 @@ mod tests {
         .unwrap();
 
         let conn = index::open_or_create(&tmp).unwrap();
-        index::build_index(&conn, &[log], |_| {}).unwrap();
+        index::build_index(&conn, &[log], true, |_| {}).unwrap();
         assert!(index::fts_available(&conn));
 
         // スタックトレース本文を FTS 経由で検索。
