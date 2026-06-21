@@ -15,6 +15,8 @@ Java アプリケーションのログ（複数ファイル）を **Web UI** で
 
 大容量ログ向けに **SQLite インデックス** をリポジトリ直下の `tmp/aplv/` に保存します。2 回目以降はファイル変更がなければインデックスを再利用するため、起動が速くなります。7 日以上未使用または件数超過の古い DB は自動削除されます。
 
+全文検索（grep）は **SQLite FTS5（trigram トークナイザ）** で高速化しています。検索語が正規表現メタ文字を含まないプレーンな 3 文字以上の文字列のときは、FTS5 でヒット候補を一括で絞り込んでから生ログを照合します（正規表現パターンや 2 文字以下の場合は従来どおり全件スキャンに自動フォールバック）。FTS5 索引は本文の複製を持たない contentless 構成のため、ディスク使用量の増加を抑えつつ、結果は従来の正規表現検索と完全に一致します。
+
 ## インストール
 
 ```powershell
@@ -153,4 +155,5 @@ java -jar target\aplv-java.jar --dir ..\samples --port 8768
 | 依存管理 | pip（標準ライブラリのみ） | Cargo | Maven |
 | Web サーバ | `http.server`（標準） | axum | `com.sun.net.httpserver`（自前） |
 | インデックス | SQLite | SQLite | SQLite |
+| 全文検索 | FTS5 trigram | FTS5 trigram | FTS5 trigram |
 | ポート | 8766 | 8767 | 8768 |

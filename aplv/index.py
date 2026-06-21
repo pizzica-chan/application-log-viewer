@@ -44,6 +44,16 @@ CREATE INDEX IF NOT EXISTS idx_entries_ts ON entries(timestamp, file_id, line_no
 CREATE INDEX IF NOT EXISTS idx_entries_level ON entries(level);
 """
 
+# 全文検索用 FTS5 テーブル。
+# - contentless（content=''）: 本文の複製を持たず、転置インデックスのみ保持（省容量）。
+# - trigram トークナイザ: 3 文字以上の部分一致検索が可能で、grep の正規表現リテラルと
+#   同じ「部分文字列・大文字小文字無視」の挙動を高速に再現できる。
+# rowid を entries.id に一致させ、候補 id の絞り込みに使う。
+_FTS_SCHEMA = (
+    "CREATE VIRTUAL TABLE entries_fts USING fts5("
+    "body, content='', tokenize='trigram')"
+)
+
 
 @dataclass(slots=True)
 class EntryRow:
@@ -93,6 +103,24 @@ def open_memory() -> sqlite3.Connection:
     return conn
 
 
+def fts_available(conn: sqlite3.Connection) -> bool:
+    """FTS5 全文検索テーブルが利用可能か（存在するか）。"""
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='entries_fts'"
+    ).fetchone()
+    return row is not None
+
+
+def recreate_fts(conn: sqlite3.Connection) -> bool:
+    """FTS5 テーブルを作り直す。FTS5/trigram 非対応なら False（フォールバック）。"""
+    try:
+        conn.execute("DROP TABLE IF EXISTS entries_fts")
+        conn.execute(_FTS_SCHEMA)
+        return True
+    except sqlite3.OperationalError:
+        return False
+
+
 def _file_fingerprint(paths: list[Path]) -> str:
     parts: list[str] = []
     for path in paths:
@@ -136,19 +164,26 @@ def _parse_ts(ts_str: str) -> datetime:
 def _flush_batch(
     conn: sqlite3.Connection,
     batch: list[tuple],
+    fts_batch: list[tuple],
+    has_fts: bool,
 ) -> None:
-    if not batch:
-        return
-    conn.executemany(
-        """
-        INSERT INTO entries (
-            file_id, line_no, byte_offset, end_byte_offset,
-            timestamp, logger, level, thread, message
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        batch,
-    )
-    batch.clear()
+    if batch:
+        conn.executemany(
+            """
+            INSERT INTO entries (
+                id, file_id, line_no, byte_offset, end_byte_offset,
+                timestamp, logger, level, thread, message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            batch,
+        )
+        batch.clear()
+    if has_fts and fts_batch:
+        conn.executemany(
+            "INSERT INTO entries_fts (rowid, body) VALUES (?, ?)",
+            fts_batch,
+        )
+        fts_batch.clear()
 
 
 def build_index(
@@ -157,8 +192,10 @@ def build_index(
     on_progress: Callable[[int], None] | None = None,
 ) -> int:
     clear_index(conn)
+    has_fts = recreate_fts(conn)
     fp = _file_fingerprint(paths)
     total = 0
+    next_id = 1
 
     with conn:
         for file_id, path in enumerate(paths, start=1):
@@ -170,8 +207,32 @@ def build_index(
             )
 
             batch: list[tuple] = []
+            fts_batch: list[tuple] = []
             line_no = 0
-            pending: tuple[int, int, object] | None = None
+            # pending: (line_no, offset, parsed, body_parts)
+            pending: tuple[int, int, object, list[str]] | None = None
+
+            def emit(entry: tuple[int, int, object, list[str]], end: int) -> None:
+                nonlocal next_id
+                p_line_no, p_offset, p_parsed, p_body = entry
+                entry_id = next_id
+                next_id += 1
+                batch.append(
+                    (
+                        entry_id,
+                        file_id,
+                        p_line_no,
+                        p_offset,
+                        end,
+                        _ts_to_str(p_parsed.timestamp),
+                        p_parsed.logger,
+                        p_parsed.level,
+                        p_parsed.thread,
+                        p_parsed.message,
+                    )
+                )
+                if has_fts:
+                    fts_batch.append((entry_id, "".join(p_body)))
 
             with path.open("rb") as fh:
                 while True:
@@ -185,47 +246,24 @@ def build_index(
                     line = line_bytes.decode("utf-8", errors="replace")
                     parsed = parse_line(line)
                     if parsed is None:
+                        # 継続行（スタックトレース等）は直前エントリの本文に蓄積。
+                        if pending is not None:
+                            pending[3].append(line)
                         continue
                     if pending is not None:
-                        p_line_no, p_offset, p_parsed = pending
-                        batch.append(
-                            (
-                                file_id,
-                                p_line_no,
-                                p_offset,
-                                offset,
-                                _ts_to_str(p_parsed.timestamp),
-                                p_parsed.logger,
-                                p_parsed.level,
-                                p_parsed.thread,
-                                p_parsed.message,
-                            )
-                        )
+                        emit(pending, offset)
                         total += 1
                         if total % 50_000 == 0 and on_progress:
                             on_progress(total)
                         if len(batch) >= BATCH_SIZE:
-                            _flush_batch(conn, batch)
-                    pending = (line_no, offset, parsed)
+                            _flush_batch(conn, batch, fts_batch, has_fts)
+                    pending = (line_no, offset, parsed, [line])
 
                 if pending is not None:
                     end = fh.tell()
-                    p_line_no, p_offset, p_parsed = pending
-                    batch.append(
-                        (
-                            file_id,
-                            p_line_no,
-                            p_offset,
-                            end,
-                            _ts_to_str(p_parsed.timestamp),
-                            p_parsed.logger,
-                            p_parsed.level,
-                            p_parsed.thread,
-                            p_parsed.message,
-                        )
-                    )
+                    emit(pending, end)
                     total += 1
-                    _flush_batch(conn, batch)
+                    _flush_batch(conn, batch, fts_batch, has_fts)
 
         conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES ('fingerprint', ?)",

@@ -18,12 +18,35 @@ import com.example.aplv.LogIndex.EntryRow;
  * SQLite インデックスに対するフィルタリング・ページング。
  *
  * <p>レベル・日時は SQL（インデックス利用）で絞り込み、正規表現系（logger / thread /
- * message / source）と grep（全文）は Java 側で評価する。grep 指定時のみ、該当行の
- * 生ログを byte 範囲から読み出すため、ファイルハンドルをクエリ中だけキャッシュする。
+ * message / source）は DB 列だけで先に評価し、grep 指定時のみ通過行の
+ * 生ログを byte 範囲から読み出す（不要なディスク I/O を省略）。
  */
 public final class LogQuery {
 
+    /** 正規表現メタ文字。grep がこれらを含まない（=プレーンなリテラル）場合のみ FTS を使う。 */
+    private static final String REGEX_META = ".^$*+?()[]{}|\\";
+    /** trigram は 3 文字以上でないと部分一致検索できない。 */
+    private static final int FTS_MIN_LEN = 3;
+
     private LogQuery() {
+    }
+
+    /** grep 文字列が FTS で扱えるプレーンなリテラルか。 */
+    private static boolean isPlainLiteral(String text) {
+        if (text.length() < FTS_MIN_LEN) {
+            return false;
+        }
+        for (int i = 0; i < text.length(); i++) {
+            if (REGEX_META.indexOf(text.charAt(i)) >= 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** リテラルを FTS5 のフレーズ（部分一致）クエリ文字列に変換する。 */
+    private static String ftsMatchExpr(String literal) {
+        return "\"" + literal.replace("\"", "\"\"") + "\"";
     }
 
     /** クエリ結果（総ヒット数 + 現ページ）。 */
@@ -61,6 +84,15 @@ public final class LogQuery {
             sql.append(" AND e.ts_millis <= ?");
             params.add(filter.untilMillis);
         }
+
+        // grep がプレーンなリテラルかつ FTS5 が使えるなら、まず FTS で候補 id を絞り込む。
+        // （最終判定は下の正規表現検証で確定するので結果は同一。）
+        if (filter.grepRe != null && filter.grepText != null
+                && isPlainLiteral(filter.grepText) && LogIndex.ftsAvailable(conn)) {
+            sql.append(" AND e.id IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?)");
+            params.add(ftsMatchExpr(filter.grepText));
+        }
+
         sql.append(" ORDER BY e.ts_millis, e.file_id, e.line_no");
 
         boolean needsRaw = filter.needsRaw();
@@ -75,12 +107,14 @@ public final class LogQuery {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     EntryRow e = LogIndex.rowFrom(rs);
-                    String raw = null;
-                    if (needsRaw) {
-                        raw = readRawCached(handles, e);
-                    }
-                    if (!matches(e, filter, raw)) {
+                    if (!matchesIndexColumns(e, filter)) {
                         continue;
+                    }
+                    if (needsRaw) {
+                        String raw = readRawCached(handles, e);
+                        if (!matchesGrep(filter, raw)) {
+                            continue;
+                        }
                     }
                     if (total >= offset && page.size() < limit) {
                         page.add(e);
@@ -102,7 +136,8 @@ public final class LogQuery {
         return new Result(total, page);
     }
 
-    private static boolean matches(EntryRow e, QueryFilter f, String raw) {
+    /** DB 列のみで判定（grep 前。ディスク読み不要）。 */
+    private static boolean matchesIndexColumns(EntryRow e, QueryFilter f) {
         if (f.levels != null && !f.levels.contains(e.level.toUpperCase())) {
             return false;
         }
@@ -124,12 +159,14 @@ public final class LogQuery {
         if (f.messageRe != null && !f.messageRe.matcher(e.message).find()) {
             return false;
         }
-        if (f.grepRe != null) {
-            if (raw == null || !f.grepRe.matcher(raw).find()) {
-                return false;
-            }
-        }
         return true;
+    }
+
+    private static boolean matchesGrep(QueryFilter f, String raw) {
+        if (f.grepRe == null) {
+            return true;
+        }
+        return f.grepRe.matcher(raw).find();
     }
 
     private static String readRawCached(Map<String, RandomAccessFile> handles, EntryRow e) {

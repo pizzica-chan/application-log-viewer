@@ -81,8 +81,47 @@ class LogIndexTest {
 
             QueryFilter byGrep = new QueryFilter();
             byGrep.grepRe = QueryFilter.compileRegex("stack line");
+            byGrep.grepText = "stack line";
             LogQuery.Result r2 = LogQuery.queryLogs(conn, byGrep, 0, 10);
             assertEquals(1, r2.total);
+
+            QueryFilter combined = new QueryFilter();
+            combined.levels = QueryFilter.parseLevelFilter("ERROR,INFO");
+            combined.loggerRe = QueryFilter.compileRegex("Foo");
+            combined.grepRe = QueryFilter.compileRegex("stack line");
+            combined.grepText = "stack line";
+            LogQuery.Result r3 = LogQuery.queryLogs(conn, combined, 0, 10);
+            assertEquals(1, r3.total);
+            assertEquals("com.example.Foo", r3.page.get(0).logger);
+        }
+    }
+
+    @Test
+    void grepUsesFtsForStacktrace(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15 00:00:01.000[main][ERROR][com.example.Foo] - boom\n"
+                        + "java.lang.NullPointerException: bad\n"
+                        + "\tat com.example.Foo.run(Foo.java:10)\n"
+                        + "2026-06-15 00:00:02.000[main][INFO][com.example.Bar] - ok\n");
+
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null);
+            assertTrue(LogIndex.ftsAvailable(conn));
+
+            // スタックトレース本文を FTS 経由で検索。
+            QueryFilter hit = new QueryFilter();
+            hit.grepRe = QueryFilter.compileRegex("NullPointerException");
+            hit.grepText = "NullPointerException";
+            LogQuery.Result r = LogQuery.queryLogs(conn, hit, 0, 10);
+            assertEquals(1, r.total);
+            assertEquals("com.example.Foo", r.page.get(0).logger);
+
+            // 存在しない語は 0 件（偽陽性なし）。
+            QueryFilter miss = new QueryFilter();
+            miss.grepRe = QueryFilter.compileRegex("zzzznotfound");
+            miss.grepText = "zzzznotfound";
+            LogQuery.Result r2 = LogQuery.queryLogs(conn, miss, 0, 10);
+            assertEquals(0, r2.total);
         }
     }
 

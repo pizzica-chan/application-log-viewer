@@ -79,6 +79,33 @@ pub fn open_or_create(log_root: &Path) -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
+/// 全文検索用 FTS5 テーブル定義。
+///
+/// - contentless（content=''）: 本文の複製を持たず転置インデックスのみ保持（省容量）。
+/// - trigram トークナイザ: 3 文字以上の部分一致検索が可能で、grep の正規表現リテラルと
+///   同じ「部分文字列・大文字小文字無視」の挙動を高速に再現できる。
+/// rowid を entries.id に一致させ、候補 id の絞り込みに使う。
+const FTS_SCHEMA: &str =
+    "CREATE VIRTUAL TABLE entries_fts USING fts5(body, content='', tokenize='trigram')";
+
+/// FTS5 全文検索テーブルが存在するか。
+pub fn fts_available(conn: &Connection) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='entries_fts'",
+        [],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|o| o.is_some())
+    .unwrap_or(false)
+}
+
+/// FTS5 テーブルを作り直す。FTS5/trigram 非対応なら `false`（フォールバック）。
+fn recreate_fts(conn: &Connection) -> bool {
+    conn.execute_batch(&format!("DROP TABLE IF EXISTS entries_fts; {FTS_SCHEMA};"))
+        .is_ok()
+}
+
 /// 対象ファイル集合のフィンガープリント（パス・mtime・サイズ）。
 fn file_fingerprint(paths: &[PathBuf]) -> std::io::Result<String> {
     let mut parts: Vec<String> = Vec::with_capacity(paths.len());
@@ -123,7 +150,24 @@ struct PendingEntry {
     line_no: i64,
     byte_offset: u64,
     parsed: ParsedLine,
+    /// ヘッダ行＋継続行（スタックトレース等）の本文。FTS5 索引に使う。
+    body: String,
 }
+
+/// flush 用エントリ行（id と本文を含む）。
+type EntryTuple = (
+    i64,
+    i64,
+    i64,
+    i64,
+    Option<i64>,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+);
 
 /// ログファイル群を走査し SQLite にインデックスを構築する。
 ///
@@ -135,9 +179,11 @@ pub fn build_index(
     mut on_progress: impl FnMut(u64),
 ) -> rusqlite::Result<u64> {
     clear_index(conn)?;
+    let has_fts = recreate_fts(conn);
     let fp = file_fingerprint(paths).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
     let mut total: u64 = 0;
+    let mut next_id: i64 = 1;
     let tx = conn.unchecked_transaction()?;
 
     for (file_id, path) in paths.iter().enumerate() {
@@ -157,7 +203,7 @@ pub fn build_index(
         let mut reader = BufReader::new(&mut file);
         let mut line_no: i64 = 0;
         let mut pending: Option<PendingEntry> = None;
-        let mut batch = Vec::with_capacity(BATCH_SIZE);
+        let mut batch: Vec<EntryTuple> = Vec::with_capacity(BATCH_SIZE);
 
         loop {
             let offset = reader
@@ -174,7 +220,7 @@ pub fn build_index(
             }
             if let Some(parsed) = parse_line(&line) {
                 if let Some(prev) = pending.take() {
-                    flush_entry(&tx, file_id as i64 + 1, prev, offset, &mut batch)?;
+                    flush_entry(&tx, file_id as i64 + 1, prev, offset, &mut next_id, has_fts, &mut batch)?;
                     total += 1;
                     if total % 50_000 == 0 {
                         on_progress(total);
@@ -184,7 +230,11 @@ pub fn build_index(
                     line_no,
                     byte_offset: offset,
                     parsed,
+                    body: line,
                 });
+            } else if let Some(prev) = pending.as_mut() {
+                // 継続行（スタックトレース等）は直前エントリの本文に蓄積。
+                prev.body.push_str(&line);
             }
         }
 
@@ -192,11 +242,11 @@ pub fn build_index(
             let end = reader
                 .stream_position()
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-            flush_entry(&tx, file_id as i64 + 1, prev, end, &mut batch)?;
+            flush_entry(&tx, file_id as i64 + 1, prev, end, &mut next_id, has_fts, &mut batch)?;
             total += 1;
         }
 
-        flush_batch(&tx, &mut batch)?;
+        flush_batch(&tx, has_fts, &mut batch)?;
     }
 
     tx.execute(
@@ -208,15 +258,21 @@ pub fn build_index(
     Ok(total)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn flush_entry(
     tx: &rusqlite::Transaction,
     file_id: i64,
     entry: PendingEntry,
     end_offset: u64,
-    batch: &mut Vec<(i64, i64, i64, Option<i64>, String, String, String, String, String)>,
+    next_id: &mut i64,
+    has_fts: bool,
+    batch: &mut Vec<EntryTuple>,
 ) -> rusqlite::Result<()> {
     let ts = entry.parsed.timestamp.format("%Y-%m-%dT%H:%M:%S%.6f").to_string();
+    let id = *next_id;
+    *next_id += 1;
     batch.push((
+        id,
         file_id,
         entry.line_no,
         entry.byte_offset as i64,
@@ -226,29 +282,41 @@ fn flush_entry(
         entry.parsed.level,
         entry.parsed.thread,
         entry.parsed.message,
+        entry.body,
     ));
     if batch.len() >= BATCH_SIZE {
-        flush_batch(tx, batch)?;
+        flush_batch(tx, has_fts, batch)?;
     }
     Ok(())
 }
 
 fn flush_batch(
     tx: &rusqlite::Transaction,
-    batch: &mut Vec<(i64, i64, i64, Option<i64>, String, String, String, String, String)>,
+    has_fts: bool,
+    batch: &mut Vec<EntryTuple>,
 ) -> rusqlite::Result<()> {
     if batch.is_empty() {
         return Ok(());
     }
     {
         let mut stmt = tx.prepare_cached(
-            "INSERT INTO entries (file_id, line_no, byte_offset, end_byte_offset, timestamp, logger, level, thread, message)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO entries (id, file_id, line_no, byte_offset, end_byte_offset, timestamp, logger, level, thread, message)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )?;
+        let mut fts_stmt = if has_fts {
+            Some(tx.prepare_cached(
+                "INSERT INTO entries_fts (rowid, body) VALUES (?1, ?2)",
+            )?)
+        } else {
+            None
+        };
         for row in batch.drain(..) {
             stmt.execute(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8
+                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9
             ])?;
+            if let Some(fts) = fts_stmt.as_mut() {
+                fts.execute(params![row.0, row.10])?;
+            }
         }
     }
     Ok(())

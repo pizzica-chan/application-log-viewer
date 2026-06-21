@@ -9,7 +9,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .filters import parse_level_filter
-from .index import EntryRow, read_entry_raw
+from .index import EntryRow, fts_available, read_entry_raw
+
+# 正規表現メタ文字。grep がこれらを含まない（=プレーンなリテラル）場合のみ
+# FTS5 trigram での候補絞り込みを使う。
+_REGEX_META = set(".^$*+?()[]{}|\\")
+# trigram は 3 文字以上でないと部分一致検索できない。
+_FTS_MIN_LEN = 3
 
 
 @dataclass(slots=True)
@@ -20,8 +26,20 @@ class QueryFilter:
     message_re: re.Pattern[str] | None = None
     source_re: re.Pattern[str] | None = None
     grep_re: re.Pattern[str] | None = None
+    grep_text: str | None = None
     since: datetime | None = None
     until: datetime | None = None
+
+
+def _is_plain_literal(text: str) -> bool:
+    """grep 文字列が FTS で扱えるプレーンなリテラルか。"""
+    return len(text) >= _FTS_MIN_LEN and not any(c in _REGEX_META for c in text)
+
+
+def _fts_match_expr(literal: str) -> str:
+    """リテラルを FTS5 のフレーズ（部分一致）クエリ文字列に変換する。"""
+    escaped = literal.replace('"', '""')
+    return f'"{escaped}"'
 
 
 def parse_datetime(value: str) -> datetime:
@@ -52,11 +70,8 @@ def _ts_to_str(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")
 
 
-def _matches_row(
-    entry: EntryRow,
-    filt: QueryFilter,
-    raw: str | None,
-) -> bool:
+def _matches_index_columns(entry: EntryRow, filt: QueryFilter) -> bool:
+    """DB 列のみで判定（grep 前の高速フィルタ。ディスク読み不要）。"""
     if filt.levels is not None and entry.level.upper() not in filt.levels:
         return False
     if filt.since is not None and entry.timestamp < filt.since:
@@ -71,9 +86,24 @@ def _matches_row(
         return False
     if filt.message_re is not None and not filt.message_re.search(entry.message):
         return False
+    return True
+
+
+def _matches_grep(filt: QueryFilter, raw: str) -> bool:
+    if filt.grep_re is None:
+        return True
+    return bool(filt.grep_re.search(raw))
+
+
+def _matches_row(
+    entry: EntryRow,
+    filt: QueryFilter,
+    raw: str | None,
+) -> bool:
+    if not _matches_index_columns(entry, filt):
+        return False
     if filt.grep_re is not None:
-        if not filt.grep_re.search(raw or ""):
-            return False
+        return _matches_grep(filt, raw or "")
     return True
 
 
@@ -127,6 +157,21 @@ def query_logs(
     if filt.until is not None:
         sql += " AND e.timestamp <= ?"
         params.append(_ts_to_str(filt.until))
+
+    # grep がプレーンなリテラルかつ FTS5 が使えるなら、まず FTS で候補 id を絞り込む。
+    # （最終的な合否は従来どおり下の正規表現検証で確定するので結果は同一。）
+    if (
+        filt.grep_re is not None
+        and filt.grep_text
+        and _is_plain_literal(filt.grep_text)
+        and fts_available(conn)
+    ):
+        sql += (
+            " AND e.id IN (SELECT rowid FROM entries_fts "
+            "WHERE entries_fts MATCH ?)"
+        )
+        params.append(_fts_match_expr(filt.grep_text))
+
     sql += " ORDER BY e.timestamp, e.file_id, e.line_no"
 
     needs_raw = filt.grep_re is not None
@@ -135,7 +180,8 @@ def query_logs(
 
     for row in conn.execute(sql, params):
         entry = _row_to_entry(row)
-        raw: str | None = None
+        if not _matches_index_columns(entry, filt):
+            continue
         if needs_raw:
             try:
                 raw = read_entry_raw(
@@ -145,8 +191,8 @@ def query_logs(
                 )
             except OSError:
                 raw = ""
-        if not _matches_row(entry, filt, raw):
-            continue
+            if not _matches_grep(filt, raw):
+                continue
         if total >= offset and len(page) < limit:
             page.append(entry)
         total += 1
@@ -172,6 +218,7 @@ def build_query_filter(
         message_re=re.compile(message_pat, re.IGNORECASE) if message_pat else None,
         source_re=re.compile(source_pat, re.IGNORECASE) if source_pat else None,
         grep_re=re.compile(grep, re.IGNORECASE) if grep else None,
+        grep_text=grep or None,
         since=_naive(since),
         until=_naive(until),
     )

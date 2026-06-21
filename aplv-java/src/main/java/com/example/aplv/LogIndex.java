@@ -125,6 +125,38 @@ public final class LogIndex {
         }
     }
 
+    /**
+     * 全文検索用 FTS5 テーブル定義。
+     *
+     * <p>contentless（content=''）で本文の複製を持たず転置インデックスのみ保持し（省容量）、
+     * trigram トークナイザにより 3 文字以上の部分一致検索を高速化する。grep の正規表現リテラルと
+     * 同じ「部分文字列・大文字小文字無視」の挙動を再現でき、rowid を entries.id に一致させて
+     * 候補 id の絞り込みに使う。
+     */
+    private static final String FTS_SCHEMA =
+            "CREATE VIRTUAL TABLE entries_fts USING fts5(body, content='', tokenize='trigram')";
+
+    /** FTS5 全文検索テーブルが存在するか。 */
+    public static boolean ftsAvailable(Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='entries_fts'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    /** FTS5 テーブルを作り直す。FTS5/trigram 非対応なら false（フォールバック）。 */
+    private static boolean recreateFts(Connection conn) {
+        try (Statement st = conn.createStatement()) {
+            st.execute("DROP TABLE IF EXISTS entries_fts");
+            st.execute(FTS_SCHEMA);
+            return true;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
     /** 対象ファイル集合のフィンガープリント（パス・mtime・サイズ）。 */
     private static String fileFingerprint(List<Path> paths) throws IOException {
         List<String> parts = new ArrayList<>(paths.size());
@@ -201,6 +233,8 @@ public final class LogIndex {
         String level;
         String thread;
         String message;
+        /** ヘッダ行＋継続行（スタックトレース等）の本文。FTS5 索引用（不要時 null）。 */
+        StringBuilder bodyBuf;
     }
 
     private static final List<Row> POISON = Collections.emptyList();
@@ -228,6 +262,7 @@ public final class LogIndex {
     private static long buildIndexTx(Connection conn, List<Path> paths, ProgressCallback progress)
             throws SQLException, IOException {
         clearIndex(conn);
+        boolean hasFts = recreateFts(conn);
         String fp = fileFingerprint(paths);
 
         // files テーブルを先に登録（FK 整合のため）。
@@ -256,7 +291,7 @@ public final class LogIndex {
             final Path path = paths.get(i);
             pool.submit(() -> {
                 try {
-                    parseFileInto(fileId, path, queue);
+                    parseFileInto(fileId, path, queue, hasFts);
                 } catch (Throwable t) {
                     error.compareAndSet(null, t);
                 } finally {
@@ -271,9 +306,12 @@ public final class LogIndex {
         }
 
         long total = 0;
+        long nextId = 1;
         try (PreparedStatement ins = conn.prepareStatement(
-                "INSERT INTO entries (file_id, line_no, byte_offset, end_byte_offset, ts_millis, "
-                        + "logger, level, thread, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO entries (id, file_id, line_no, byte_offset, end_byte_offset, ts_millis, "
+                        + "logger, level, thread, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+             PreparedStatement ftsIns = hasFts ? conn.prepareStatement(
+                "INSERT INTO entries_fts (rowid, body) VALUES (?, ?)") : null) {
             while (true) {
                 List<Row> batch;
                 try {
@@ -286,18 +324,28 @@ public final class LogIndex {
                     break;
                 }
                 for (Row r : batch) {
-                    ins.setLong(1, r.fileId);
-                    ins.setLong(2, r.lineNo);
-                    ins.setLong(3, r.byteOffset);
-                    ins.setLong(4, r.endByteOffset);
-                    ins.setLong(5, r.tsMillis);
-                    ins.setString(6, r.logger);
-                    ins.setString(7, r.level);
-                    ins.setString(8, r.thread);
-                    ins.setString(9, r.message);
+                    long id = nextId++;
+                    ins.setLong(1, id);
+                    ins.setLong(2, r.fileId);
+                    ins.setLong(3, r.lineNo);
+                    ins.setLong(4, r.byteOffset);
+                    ins.setLong(5, r.endByteOffset);
+                    ins.setLong(6, r.tsMillis);
+                    ins.setString(7, r.logger);
+                    ins.setString(8, r.level);
+                    ins.setString(9, r.thread);
+                    ins.setString(10, r.message);
                     ins.addBatch();
+                    if (ftsIns != null) {
+                        ftsIns.setLong(1, id);
+                        ftsIns.setString(2, r.bodyBuf != null ? r.bodyBuf.toString() : "");
+                        ftsIns.addBatch();
+                    }
                 }
                 ins.executeBatch();
+                if (ftsIns != null) {
+                    ftsIns.executeBatch();
+                }
                 long before = total;
                 total += batch.size();
                 if (before / COMMIT_INTERVAL != total / COMMIT_INTERVAL) {
@@ -335,7 +383,8 @@ public final class LogIndex {
         return total;
     }
 
-    private static void parseFileInto(long fileId, Path path, BlockingQueue<List<Row>> queue)
+    private static void parseFileInto(long fileId, Path path, BlockingQueue<List<Row>> queue,
+            boolean collectBody)
             throws IOException, InterruptedException {
         try (InputStream raw = Files.newInputStream(path);
              InputStream in = new BufferedInputStream(raw, 1 << 16);
@@ -350,11 +399,15 @@ public final class LogIndex {
                 if (reader.isBlankLine()) {
                     continue;
                 }
-                if (!LogParser.looksLikeHeader(reader.lineBuf, reader.lineLen)) {
-                    continue;
-                }
-                LogParser.ParsedLine parsed = LogParser.parse(reader.lineBuf, reader.lineLen);
+                boolean header = LogParser.looksLikeHeader(reader.lineBuf, reader.lineLen);
+                LogParser.ParsedLine parsed =
+                        header ? LogParser.parse(reader.lineBuf, reader.lineLen) : null;
                 if (parsed == null) {
+                    // 継続行（スタックトレース等）は直前エントリの本文に蓄積。
+                    if (collectBody && pending != null) {
+                        pending.bodyBuf.append(new String(
+                                reader.lineBuf, 0, reader.lineLen, StandardCharsets.UTF_8));
+                    }
                     continue;
                 }
                 long offset = reader.lineStart;
@@ -375,6 +428,11 @@ public final class LogIndex {
                 pending.level = parsed.level;
                 pending.thread = parsed.thread;
                 pending.message = parsed.message;
+                if (collectBody) {
+                    pending.bodyBuf = new StringBuilder();
+                    pending.bodyBuf.append(new String(
+                            reader.lineBuf, 0, reader.lineLen, StandardCharsets.UTF_8));
+                }
             }
 
             if (pending != null) {

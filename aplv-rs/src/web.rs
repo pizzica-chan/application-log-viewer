@@ -359,6 +359,11 @@ fn build_filter(q: &LogsQuery) -> Result<QueryFilter, ApiError> {
         message_re: opt_regex(q.message.as_deref())?,
         source_re: opt_regex(q.source.as_deref())?,
         grep_re: opt_regex(q.grep.as_deref())?,
+        grep_text: q
+            .grep
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string()),
         since,
         until,
     })

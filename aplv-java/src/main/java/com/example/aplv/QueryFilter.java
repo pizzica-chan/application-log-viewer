@@ -18,6 +18,7 @@ public final class QueryFilter {
     public Pattern messageRe;
     public Pattern sourceRe;
     public Pattern grepRe;
+    public String grepText;          // grep の元文字列（FTS 候補絞り込み判定・MATCH 生成用）
     public Long sinceMillis;         // null = 下限なし
     public Long untilMillis;         // null = 上限なし
 

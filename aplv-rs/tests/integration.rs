@@ -72,6 +72,7 @@ fn query_error_entries_from_sample_index() {
         message_re: None,
         source_re: None,
         grep_re: None,
+        grep_text: None,
         since: None,
         until: None,
     };
@@ -99,6 +100,7 @@ fn stack_trace_readable_via_grep() {
         message_re: None,
         source_re: None,
         grep_re: query::compile_regex("NullPointerException").ok(),
+        grep_text: Some("NullPointerException".into()),
         since: None,
         until: None,
     };

@@ -384,6 +384,8 @@ public final class LogServer {
             filter.messageRe = QueryFilter.compileRegex(p.get("message"));
             filter.sourceRe = QueryFilter.compileRegex(p.get("source"));
             filter.grepRe = QueryFilter.compileRegex(p.get("grep"));
+            String grep = p.get("grep");
+            filter.grepText = (grep != null && !grep.isEmpty()) ? grep : null;
         } catch (RuntimeException e) {
             sendErrorJson(ex, 400, "正規表現が不正です: " + e.getMessage());
             return;
