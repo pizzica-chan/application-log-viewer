@@ -70,24 +70,26 @@
     </div>
   </section>
 
-  <div class="table-wrap">
+  <div class="table-container">
     <div id="loading-overlay" class="loading-overlay" hidden role="status" aria-live="polite">
       <div class="loading-spinner" aria-hidden="true"></div>
       <p id="loading-text">読み込み中...</p>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>時刻</th>
-          <th>Level</th>
-          <th>Logger</th>
-          <th>Thread</th>
-          <th>Message</th>
-          <th>Source</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>時刻</th>
+            <th>Level</th>
+            <th>Logger</th>
+            <th>Thread</th>
+            <th>Message</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
   </div>
 
   <dialog id="browse-dialog">

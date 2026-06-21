@@ -132,8 +132,11 @@ button {
   color: var(--text);
 }
 
-.table-wrap {
+.table-container {
   position: relative;
+}
+
+.table-wrap {
   overflow: auto;
   max-height: calc(100vh - 280px);
 }
