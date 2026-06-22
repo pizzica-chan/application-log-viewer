@@ -1,5 +1,5 @@
-# ビルド段階: Maven で fat JAR を生成
-FROM public.ecr.aws/docker/library/maven:3.9.9-eclipse-temurin-8-alpine AS build
+# ビルド段階: Maven で fat JAR を生成（Java 8 ターゲットは pom.xml で指定）
+FROM public.ecr.aws/docker/library/maven:3.9.9-eclipse-temurin-21-alpine AS build
 WORKDIR /app
 COPY aplv-java/pom.xml .
 COPY aplv-java/src ./src

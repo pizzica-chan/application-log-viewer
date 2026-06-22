@@ -1,4 +1,4 @@
-# Dot-source 用: Docker デーモン確認と Docker Desktop の起動待ち
+﻿# Dot-source 用: Docker デーモン確認と Docker Desktop の起動待ち
 # 使用側: . "$PSScriptRoot\Ensure-DockerDesktop.ps1"
 
 function Test-DockerDaemon {

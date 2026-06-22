@@ -61,29 +61,26 @@ java -jar aplv-java\target\aplv-java.jar --dir samples --port 8766
 
 JDK/Maven をインストールせず、コンテナだけでサンプルログの閲覧まで試せます。
 
-### 最短手順（Windows + Docker Desktop）
+### ワンクリック起動（おすすめ）
 
 1. [Docker Desktop](https://www.docker.com/products/docker-desktop/) をインストールする。
-2. リポジトリ直下で次を実行する。
+2. リポジトリ直下の **`docker-up.bat`** をダブルクリック（または `scripts\one-click-up.cmd`）。
 
-```powershell
-.\scripts\docker-desktop-up.ps1
-# または
-scripts\docker-desktop-up.cmd
-```
-
-3. ブラウザで http://localhost:8766 を開く（`samples/` のログが自動読み込みされます）。
-
-Docker が止まっている場合、スクリプトが **Docker Desktop の起動を試み、デーモンが応答するまで待機**します（最大約 3 分）。
+Docker Desktop が止まっていれば **自動起動・待機**（最大約 3 分）→ **ビルド** → **起動** → **ブラウザで http://localhost:8766 を開く** まで一気に実行されます。`samples/` のログは自動読み込みされます。
 
 | 操作 | コマンド |
 |------|----------|
-| 起動 | `.\scripts\docker-desktop-up.ps1` |
-| 停止 | `.\scripts\docker-desktop-down.ps1` |
-| ソース変更の反映 | `.\scripts\docker-desktop-restart.ps1` |
-| ログ追従 | `docker compose logs -f app` |
+| 起動 | `docker-up.bat` |
+| 停止 | `docker-down.bat` |
+| ソース変更の反映 | `scripts\one-click-restart.cmd` |
+| ログ追従 | `docker-up.bat` 相当を PowerShell から `-FollowLogs` 付きで実行（下記） |
 
-起動後にログを追従する場合: `.\scripts\docker-desktop-up.ps1 -FollowLogs`
+PowerShell から起動する場合:
+
+```powershell
+.\scripts\one-click-up.ps1
+.\scripts\one-click-up.ps1 -FollowLogs   # 起動後にログ追従
+```
 
 ### 手動（docker compose のみ）
 
