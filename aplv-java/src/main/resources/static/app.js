@@ -493,12 +493,6 @@ els.rangeClear.addEventListener("click", () => {
   offset = 0;
   loadLogs();
 });
-for (const el of [els.sinceDate, els.sinceTime, els.untilDate, els.untilTime]) {
-  el.addEventListener("change", () => {
-    offset = 0;
-    loadLogs();
-  });
-}
 els.browseUp.addEventListener("click", async () => {
   const params = new URLSearchParams();
   params.set("path", browsePath);
