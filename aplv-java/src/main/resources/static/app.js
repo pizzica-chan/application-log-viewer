@@ -2,6 +2,7 @@ const limit = 200;
 let offset = 0;
 let lastTotal = 0;
 let browsePath = "";
+let metaRange = { first: null, last: null };
 
 const els = {
   meta: document.getElementById("meta"),
@@ -13,8 +14,15 @@ const els = {
   logger: document.getElementById("logger"),
   thread: document.getElementById("thread"),
   message: document.getElementById("message"),
-  since: document.getElementById("since"),
-  until: document.getElementById("until"),
+  sinceDate: document.getElementById("since-date"),
+  sinceTime: document.getElementById("since-time"),
+  untilDate: document.getElementById("until-date"),
+  untilTime: document.getElementById("until-time"),
+  rangeFull: document.getElementById("range-full"),
+  rangeLast1h: document.getElementById("range-last-1h"),
+  rangeLast24h: document.getElementById("range-last-24h"),
+  rangeClear: document.getElementById("range-clear"),
+  rangeHint: document.getElementById("range-hint"),
   grep: document.getElementById("grep"),
   source: document.getElementById("source"),
   search: document.getElementById("search"),
@@ -72,6 +80,120 @@ function levelClass(level) {
   return "";
 }
 
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function parseIsoParts(iso) {
+  if (!iso) return null;
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+  if (!match) return null;
+  return {
+    y: Number(match[1]),
+    mo: Number(match[2]),
+    d: Number(match[3]),
+    h: Number(match[4]),
+    mi: Number(match[5]),
+    s: Number(match[6]),
+  };
+}
+
+function isoToMsJst(iso) {
+  const p = parseIsoParts(iso);
+  if (!p) return null;
+  return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - 9 * 3600000;
+}
+
+function msJstToFields(ms) {
+  const jst = new Date(ms + 9 * 3600000);
+  return {
+    date:
+      jst.getUTCFullYear() +
+      "-" +
+      pad2(jst.getUTCMonth() + 1) +
+      "-" +
+      pad2(jst.getUTCDate()),
+    time: pad2(jst.getUTCHours()) + ":" + pad2(jst.getUTCMinutes()),
+  };
+}
+
+function formatRangeHint(iso) {
+  const p = parseIsoParts(iso);
+  if (!p) return iso;
+  return `${p.y}-${pad2(p.mo)}-${pad2(p.d)} ${pad2(p.h)}:${pad2(p.mi)}`;
+}
+
+function setDatetimeFields(start, end) {
+  els.sinceDate.value = start.date;
+  els.sinceTime.value = start.time;
+  els.untilDate.value = end.date;
+  els.untilTime.value = end.time;
+}
+
+function clearDatetimeFields() {
+  els.sinceDate.value = "";
+  els.sinceTime.value = "";
+  els.untilDate.value = "";
+  els.untilTime.value = "";
+}
+
+function getSinceParam() {
+  if (!els.sinceDate.value) return null;
+  const time = els.sinceTime.value || "00:00";
+  return `${els.sinceDate.value} ${time}:00`;
+}
+
+function getUntilParam() {
+  if (!els.untilDate.value) return null;
+  const time = els.untilTime.value || "23:59";
+  return `${els.untilDate.value} ${time}:00`;
+}
+
+function updateRangeUi() {
+  const ready = Boolean(metaRange.first && metaRange.last);
+  els.rangeFull.disabled = !ready;
+  els.rangeLast1h.disabled = !ready;
+  els.rangeLast24h.disabled = !ready;
+  if (ready) {
+    els.sinceDate.min = msJstToFields(isoToMsJst(metaRange.first)).date;
+    els.sinceDate.max = msJstToFields(isoToMsJst(metaRange.last)).date;
+    els.untilDate.min = els.sinceDate.min;
+    els.untilDate.max = els.sinceDate.max;
+    els.rangeHint.textContent =
+      "ログの範囲: " +
+      formatRangeHint(metaRange.first) +
+      " 〜 " +
+      formatRangeHint(metaRange.last);
+  } else {
+    els.sinceDate.min = "";
+    els.sinceDate.max = "";
+    els.untilDate.min = "";
+    els.untilDate.max = "";
+    els.rangeHint.textContent = "ログ読み込み後に期間ボタンが使えます";
+  }
+}
+
+function applyFullRange() {
+  if (!metaRange.first || !metaRange.last) return;
+  setDatetimeFields(
+    msJstToFields(isoToMsJst(metaRange.first)),
+    msJstToFields(isoToMsJst(metaRange.last))
+  );
+  offset = 0;
+  loadLogs();
+}
+
+function applyLastHours(hours) {
+  if (!metaRange.first || !metaRange.last) return;
+  const endMs = isoToMsJst(metaRange.last);
+  const startMs = isoToMsJst(metaRange.first);
+  if (endMs == null || startMs == null) return;
+  const sinceMs = Math.max(startMs, endMs - hours * 3600000);
+  setDatetimeFields(msJstToFields(sinceMs), msJstToFields(endMs));
+  offset = 0;
+  loadLogs();
+}
+
 function buildQuery() {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
@@ -86,8 +208,8 @@ function buildQuery() {
   ]) {
     if (el.value.trim()) params.set(key, el.value.trim());
   }
-  if (els.since.value) params.set("since", els.since.value.replace("T", " ") + ":00.000");
-  if (els.until.value) params.set("until", els.until.value.replace("T", " ") + ":00.000");
+  if (els.sinceDate.value) params.set("since", getSinceParam());
+  if (els.untilDate.value) params.set("until", getUntilParam());
   return params;
 }
 
@@ -143,30 +265,37 @@ function updateMeta(data) {
     els.logDir.value = data.directory;
   }
   if (data.files.length === 0) {
+    metaRange = { first: null, last: null };
     els.meta.textContent = "ログファイル未読み込み — ディレクトリを選択してください";
     els.fileList.textContent = "";
     setBackgroundLoading(false);
     setLoadingUi(false);
     clearLoadPoll();
+    updateRangeUi();
     return;
   }
   if (data.load_error) {
+    metaRange = { first: null, last: null };
     els.meta.textContent = `読み込みエラー: ${data.load_error}`;
     els.fileList.textContent = data.files.join(" | ");
     setBackgroundLoading(false);
     setLoadingUi(false);
     clearLoadPoll();
+    updateRangeUi();
     return;
   }
   if (data.loading) {
+    metaRange = { first: null, last: null };
     const message = `ログを読み込み中... ${data.load_progress.toLocaleString()} 行`;
     els.meta.textContent = `${message} / ファイル ${data.files.length} 件`;
     els.fileList.textContent = data.files.join(" | ");
     setBackgroundLoading(true, message);
     setLoadingUi(true);
     scheduleLoadPoll();
+    updateRangeUi();
     return;
   }
+  metaRange = { first: data.first, last: data.last };
   els.meta.textContent =
     `${data.total.toLocaleString()} 行 / ファイル ${data.files.length} 件` +
     (data.first ? ` / ${data.first} 〜 ${data.last}` : "");
@@ -174,6 +303,7 @@ function updateMeta(data) {
   setBackgroundLoading(false);
   setLoadingUi(false);
   clearLoadPoll();
+  updateRangeUi();
 }
 
 async function loadDirectory() {
@@ -337,13 +467,12 @@ function resetFilters() {
     els.logger,
     els.thread,
     els.message,
-    els.since,
-    els.until,
     els.grep,
     els.source,
   ]) {
     el.value = "";
   }
+  clearDatetimeFields();
   offset = 0;
   loadLogs();
 }
@@ -356,6 +485,20 @@ els.search.addEventListener("click", () => {
 els.reset.addEventListener("click", resetFilters);
 els.loadDir.addEventListener("click", loadDirectory);
 els.browse.addEventListener("click", openBrowseDialog);
+els.rangeFull.addEventListener("click", applyFullRange);
+els.rangeLast1h.addEventListener("click", () => applyLastHours(1));
+els.rangeLast24h.addEventListener("click", () => applyLastHours(24));
+els.rangeClear.addEventListener("click", () => {
+  clearDatetimeFields();
+  offset = 0;
+  loadLogs();
+});
+for (const el of [els.sinceDate, els.sinceTime, els.untilDate, els.untilTime]) {
+  el.addEventListener("change", () => {
+    offset = 0;
+    loadLogs();
+  });
+}
 els.browseUp.addEventListener("click", async () => {
   const params = new URLSearchParams();
   params.set("path", browsePath);
@@ -398,3 +541,5 @@ loadMeta().then(async (data) => {
     await loadLogs();
   }
 });
+
+updateRangeUi();

@@ -83,6 +83,91 @@ header h1 {
   background: var(--panel);
 }
 
+.datetime-filter {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.field-label,
+.point-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.datetime-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.datetime-point {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.datetime-inputs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.datetime-inputs input[type="date"] {
+  width: 10.5rem;
+  min-width: 10.5rem;
+  max-width: 10.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.datetime-inputs input[type="time"] {
+  width: 6.25rem;
+  min-width: 6.25rem;
+  max-width: 6.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.datetime-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.chip {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.75rem;
+  cursor: pointer;
+  align-self: auto;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.range-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -299,6 +384,34 @@ dialog pre {
 #browse-select {
   background: var(--accent);
   color: #fff;
+}
+
+@media (max-width: 640px) {
+  .datetime-range {
+    width: 100%;
+  }
+
+  .datetime-point {
+    width: 100%;
+  }
+
+  .datetime-inputs {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    width: 100%;
+  }
+
+  .datetime-inputs input[type="date"] {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .datetime-inputs input[type="time"] {
+    width: 6.25rem;
+    min-width: 6.25rem;
+    max-width: 6.25rem;
+  }
 }
 
 @media (prefers-color-scheme: light) {

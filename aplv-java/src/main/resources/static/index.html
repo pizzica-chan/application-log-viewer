@@ -41,14 +41,32 @@
       メッセージ (正規表現)
       <input id="message" placeholder="NullPointer">
     </label>
-    <label>
-      開始
-      <input id="since" type="datetime-local">
-    </label>
-    <label>
-      終了
-      <input id="until" type="datetime-local">
-    </label>
+    <div class="datetime-filter">
+      <span class="field-label">期間 (JST)</span>
+      <div class="datetime-range">
+        <div class="datetime-point">
+          <span class="point-label">開始</span>
+          <div class="datetime-inputs">
+            <input id="since-date" type="date" aria-label="開始日">
+            <input id="since-time" type="time" step="60" aria-label="開始時刻">
+          </div>
+        </div>
+        <div class="datetime-point">
+          <span class="point-label">終了</span>
+          <div class="datetime-inputs">
+            <input id="until-date" type="date" aria-label="終了日">
+            <input id="until-time" type="time" step="60" aria-label="終了時刻">
+          </div>
+        </div>
+      </div>
+      <div class="datetime-actions">
+        <button type="button" id="range-full" class="chip" disabled>全期間</button>
+        <button type="button" id="range-last-1h" class="chip" disabled>末尾1時間</button>
+        <button type="button" id="range-last-24h" class="chip" disabled>末尾24時間</button>
+        <button type="button" id="range-clear" class="chip">クリア</button>
+      </div>
+      <p id="range-hint" class="range-hint"></p>
+    </div>
     <label>
       全文検索
       <input id="grep" placeholder="Exception">
