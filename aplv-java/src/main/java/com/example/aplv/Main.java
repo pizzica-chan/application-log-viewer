@@ -13,7 +13,7 @@ import java.util.List;
  *   java -jar aplv-java.jar [--dir &lt;ログディレクトリ&gt;] [--host &lt;host&gt;] [--port &lt;port&gt;]
  * </pre>
  *
- * デフォルト: http://127.0.0.1:8768（Python 8766 / Rust 8767 と競合しない）
+ * デフォルト: http://127.0.0.1:8766
  */
 public final class Main {
 
@@ -22,7 +22,7 @@ public final class Main {
 
     public static void main(String[] args) {
         String host = "127.0.0.1";
-        int port = 8768;
+        int port = 8766;
         String dir = null;
         boolean enableFts = false;
 
@@ -99,7 +99,7 @@ public final class Main {
         System.out.println("使い方: java -jar aplv-java.jar [--dir <dir>] [--host <host>] [--port <port>] [--fts]");
         System.out.println("  --dir   起動時に読み込むログディレクトリ（省略時は UI から選択）");
         System.out.println("  --host  待ち受けアドレス（デフォルト 127.0.0.1）");
-        System.out.println("  --port  待ち受けポート（デフォルト 8768）");
+        System.out.println("  --port  待ち受けポート（デフォルト 8766）");
         System.out.println("  --fts   全文検索を FTS5 で高速化（インデックス構築は遅くなる。"
                 + "未指定時は全件スキャンで grep）");
     }

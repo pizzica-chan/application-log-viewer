@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 自前 HTTP サーバ（JDK 内蔵 {@link com.sun.net.httpserver.HttpServer} を使用）。
  *
  * <p>アプリケーションサーバ（Tomcat 等）に依存せず単体で Web UI を提供する。
- * Python / Rust 版と互換の API を実装し、同じフロントエンドをそのまま利用する。
+ * REST API と Web UI（クラスパス同梱の静的ファイル）を提供する。
  *
  * <ul>
  *   <li>{@code GET /}              — index.html</li>

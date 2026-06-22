@@ -1,6 +1,6 @@
 # Application Log Viewer (Java 8)
 
-Python 版 (`aplv`) / Rust 版 (`aplv-rs`) と同じ Web UI で Java アプリログを閲覧・検索する **Java 8 実装** です。
+Java アプリログを Web UI で閲覧・検索する **Java 8 実装** です。
 
 - **依存関係管理は Maven**
 - **Web サーバ機能は自前**（JDK 内蔵の `com.sun.net.httpserver` を利用。Tomcat 等のアプリケーションサーバ不要）
@@ -37,19 +37,19 @@ mvn -q clean package
 ```powershell
 java -jar target\aplv-java.jar --dir ..\samples
 # または
-java -jar target\aplv-java.jar --dir C:\logs\app --port 8768
+java -jar target\aplv-java.jar --dir C:\logs\app --port 8766
 ```
 
-ブラウザ: http://127.0.0.1:8768
+ブラウザ: http://127.0.0.1:8766
 
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
 | `--dir`  | 起動時に読み込むログディレクトリ（省略時は UI から選択） | — |
 | `--host` | 待ち受けアドレス | `127.0.0.1` |
-| `--port` | 待ち受けポート（Python 8766 / Rust 8767 と競合しない） | `8768` |
+| `--port` | 待ち受けポート | `8766` |
 | `--fts`  | 全文検索を FTS5 で高速化（インデックス構築は遅くなる） | 無効 |
 
-## API（Python / Rust 版と互換）
+## API
 
 - `GET /` — Web UI
 - `GET /api/meta` — 読み込み状態・件数・期間
@@ -59,8 +59,6 @@ java -jar target\aplv-java.jar --dir C:\logs\app --port 8768
 - `GET /api/logs/detail?source=&line_no=&timestamp=` — スタックトレース含む生ログ
 
 ## 対応ログ形式
-
-Python / Rust 版と同一です。
 
 ```
 2026-06-15 00:19:11.705[ajp-nio-8009-exec-24][TRACE][org.hogehoge.jdbc.HogeUtil] - ログ本文

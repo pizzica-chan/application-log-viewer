@@ -16,7 +16,7 @@ import java.util.Set;
 /**
  * ログファイルの再帰探索。
  *
- * <p>Python / Rust 版と同じファイル名パターン・スキップディレクトリに対応する。
+ * <p>一般的な Java アプリログのファイル名パターンに一致するファイルを再帰探索する。
  */
 public final class Discovery {
 
@@ -91,7 +91,7 @@ public final class Discovery {
         return found;
     }
 
-    /** 簡易 glob マッチ（{@code *} と {@code ?} のみ。Python {@code fnmatch} 相当）。 */
+    /** 簡易 glob マッチ（{@code *} と {@code ?} のみ。{@code fnmatch} 相当）。 */
     static boolean globMatch(String pattern, String name) {
         return globMatch(pattern, 0, name, 0);
     }

@@ -1,18 +1,12 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-dist/
-build/
-.pytest_cache/
-.mypy_cache/
-
-# Rust
-aplv-rs/target/
-
 # SQLite index (local)
 tmp/
 
 # Legacy index under log directories (no longer created)
 .aplv/
+
+# Maven
+aplv-java/target/
+
+# Python (legacy)
+__pycache__/
+*.egg-info/

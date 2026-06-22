@@ -17,30 +17,37 @@ Java アプリケーションのログ（複数ファイル）を **Web UI** で
 
 全文検索（grep）は **SQLite FTS5（trigram トークナイザ）** で高速化できます（**起動時に `--fts` を指定したときのみ有効**）。検索語が正規表現メタ文字を含まないプレーンな 3 文字以上の文字列のときは、FTS5 でヒット候補を一括で絞り込んでから生ログを照合します（正規表現パターンや 2 文字以下の場合は従来どおり全件スキャンに自動フォールバック）。FTS5 索引は本文の複製を持たない contentless 構成のため、ディスク使用量の増加を抑えつつ、結果は従来の正規表現検索と完全に一致します。
 
-`--fts` を指定しない既定動作では FTS5 索引を作らないため**初回のインデックス構築が高速**です（grep は全件スキャンになります）。検索を多用しインデックス構築時間を許容できる場合に `--fts` を付けてください。全文検索の挙動は 3 実装（Python / Rust / Java）で共通です。
+`--fts` を指定しない既定動作では FTS5 索引を作らないため**初回のインデックス構築が高速**です（grep は全件スキャンになります）。検索を多用しインデックス構築時間を許容できる場合に `--fts` を付けてください。
 
-## インストール
+## 前提
+
+- JDK 8 以上（`javac` を含む JDK。実行のみなら JRE 8 でも可）
+- Maven 3.6 以上
+
+## ビルド
 
 ```powershell
-cd D:\workspace\application-log-viewer
-pip install -e .
+cd D:\workspace\application-log-viewer\aplv-java
+mvn -q clean package
 ```
 
-依存パッケージは不要（Python 3.10+、標準ライブラリ + SQLite）です。
+依存込みの実行可能 JAR `target/aplv-java.jar` が生成されます。
 
 ## 起動
 
 ```powershell
-python -m aplv
+java -jar aplv-java\target\aplv-java.jar
 ```
+
+またはリポジトリ直下の `start.bat` を実行します（JAR が無い場合は自動ビルド）。
 
 ブラウザで http://127.0.0.1:8766 を開きます。
 
 起動時にログディレクトリを指定する場合:
 
 ```powershell
-python -m aplv --dir C:\logs\app
-python -m aplv --dir samples --port 8766
+java -jar aplv-java\target\aplv-java.jar --dir C:\logs\app
+java -jar aplv-java\target\aplv-java.jar --dir samples --port 8766
 ```
 
 | オプション | 説明 | デフォルト |
@@ -65,7 +72,7 @@ python -m aplv --dir samples --port 8766
 - `catalina*.log*`, `localhost*.log*`, `app*.log*`
 - `*.log`, `*.out`
 
-`.git` や `__pycache__` などのディレクトリはスキップします。圧縮ファイル（`.gz` 等）は未対応です。
+`.git` や `node_modules` などのディレクトリはスキップします。圧縮ファイル（`.gz` 等）は未対応です。
 
 ### フィルタ
 
@@ -112,7 +119,7 @@ java.lang.NullPointerException: null
 
 ```powershell
 # Web UI を起動してサンプルログを読み込み
-python -m aplv --dir samples
+java -jar aplv-java\target\aplv-java.jar --dir samples
 
 # ブラウザで以下のような調査を行う
 # - レベル: ERROR
@@ -121,42 +128,25 @@ python -m aplv --dir samples
 # - ロガー: HogeController
 ```
 
-## ライセンス
+## パフォーマンス設計
 
-MIT
+| 項目 | 内容 |
+|------|------|
+| メモリ | エントリ本文（スタックトレース）は DB に載せず、元ファイルの **byte offset** から都度読み出し |
+| インデックス | 解析結果を `{リポジトリ}/tmp/aplv/`（SQLite）に **永続化** |
+| 解析 | バイト列でヘッダ行を高速判定し、一致行のみ UTF-8 デコード |
+| 並列化 | 複数ログファイルを **並列パース**、SQLite 書き込みは単一ライタースレッド |
+| Web サーバ | JDK 内蔵 `com.sun.net.httpserver` による自前実装（Tomcat 等不要） |
 
-## Rust + SQLite 版
+詳細は [aplv-java/README.md](aplv-java/README.md) を参照してください。
 
-大容量ログ向けに **Rust + SQLite** 実装（`aplv-rs/`）を同梱しています。Python 版はそのまま利用できます。
-
-```powershell
-cd aplv-rs
-cargo run --release -- --dir ..\samples --port 8767
-```
-
-詳細は [aplv-rs/README.md](aplv-rs/README.md) を参照してください。
-
-## Java 8 + SQLite 版
-
-数 GB 級の大容量ログ向けに **Java 8 + SQLite** 実装（`aplv-java/`）を同梱しています。
-依存関係管理は Maven、Web サーバ機能は JDK 内蔵 `com.sun.net.httpserver` による自前実装です（Tomcat 等不要）。
+## テスト
 
 ```powershell
 cd aplv-java
-mvn -q clean package
-java -jar target\aplv-java.jar --dir ..\samples --port 8768
+mvn test
 ```
 
-複数ファイルの並列パース・byte offset によるオンデマンド読み出し・SQLite インデックス永続化で大容量ログに対応します。
-詳細は [aplv-java/README.md](aplv-java/README.md) を参照してください。
+## ライセンス
 
-## 3 実装の比較
-
-| | Python 版 | Rust 版 | Java 8 版 |
-|---|-----------|---------|-----------|
-| ディレクトリ | `aplv/` | `aplv-rs/` | `aplv-java/` |
-| 依存管理 | pip（標準ライブラリのみ） | Cargo | Maven |
-| Web サーバ | `http.server`（標準） | axum | `com.sun.net.httpserver`（自前） |
-| インデックス | SQLite | SQLite | SQLite |
-| 全文検索 | FTS5 trigram（`--fts`） | FTS5 trigram（`--fts`） | FTS5 trigram（`--fts`） |
-| ポート | 8766 | 8767 | 8768 |
+MIT

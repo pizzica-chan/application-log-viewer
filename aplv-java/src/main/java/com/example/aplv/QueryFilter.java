@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
  * {@code /api/logs} のフィルタ条件。
  *
  * <p>レベル・日時は SQL で事前絞り込み、logger / thread / message / source / grep は
- * Java 側で正規表現マッチ（Python / Rust 版と同じ挙動。正規表現は大文字小文字を無視）。
+ * Java 側で正規表現マッチ（正規表現は大文字小文字を無視）。
  */
 public final class QueryFilter {
 
