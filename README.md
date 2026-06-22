@@ -21,8 +21,8 @@ Java アプリケーションのログ（複数ファイル）を **Web UI** で
 
 ## 前提
 
-- JDK 8 以上（`javac` を含む JDK。実行のみなら JRE 8 でも可）
-- Maven 3.6 以上
+- **Docker で動作確認（おすすめ）:** [Docker Desktop](https://www.docker.com/products/docker-desktop/)（ホストに JDK/Maven 不要）
+- **ローカル開発:** JDK 8 以上（`javac` を含む JDK。実行のみなら JRE 8 でも可）、Maven 3.6 以上
 
 ## ビルド
 
@@ -56,6 +56,58 @@ java -jar aplv-java\target\aplv-java.jar --dir samples --port 8766
 | `--host` | 待ち受けアドレス | `127.0.0.1` |
 | `--port` | 待ち受けポート | `8766` |
 | `--fts` | 全文検索を FTS5 で高速化（インデックス構築は遅くなる） | 無効 |
+
+## Docker で動作確認（ローカル）
+
+JDK/Maven をインストールせず、コンテナだけでサンプルログの閲覧まで試せます。
+
+### 最短手順（Windows + Docker Desktop）
+
+1. [Docker Desktop](https://www.docker.com/products/docker-desktop/) をインストールする。
+2. リポジトリ直下で次を実行する。
+
+```powershell
+.\scripts\docker-desktop-up.ps1
+# または
+scripts\docker-desktop-up.cmd
+```
+
+3. ブラウザで http://localhost:8766 を開く（`samples/` のログが自動読み込みされます）。
+
+Docker が止まっている場合、スクリプトが **Docker Desktop の起動を試み、デーモンが応答するまで待機**します（最大約 3 分）。
+
+| 操作 | コマンド |
+|------|----------|
+| 起動 | `.\scripts\docker-desktop-up.ps1` |
+| 停止 | `.\scripts\docker-desktop-down.ps1` |
+| ソース変更の反映 | `.\scripts\docker-desktop-restart.ps1` |
+| ログ追従 | `docker compose logs -f app` |
+
+起動後にログを追従する場合: `.\scripts\docker-desktop-up.ps1 -FollowLogs`
+
+### 手動（docker compose のみ）
+
+**Docker Desktop を先に起動**してから、リポジトリ直下で実行します。
+
+```powershell
+docker compose up --build -d
+docker compose ps
+docker compose logs -f app
+docker compose down
+```
+
+### マウントと環境変数
+
+| 項目 | 説明 |
+|------|------|
+| `./samples` → `/app/logs/samples` | サンプルログ（読み取り専用）。起動時に `--dir` で自動読み込み |
+| `./tmp` → `/app/tmp` | SQLite インデックスの永続化 |
+| `APLV_LOG_DIR` | ホスト側のログディレクトリを差し替え（例: `$env:APLV_LOG_DIR="C:\logs\app"`） |
+| `APLV_HOME=/app` | コンテナ内のリポジトリルート（インデックス保存先の基準） |
+
+**ホストポート:** 既定は **`8766`** です。競合する場合は `docker-compose.yml` の `ports` を `"18766:8766"` のように変更し、ブラウザも合わせてください。
+
+**注意:** ローカル検証専用です。インターネットに公開しないでください。
 
 ## Web UI の使い方
 

@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    image: aplv-java
+    container_name: aplv-java
+    restart: unless-stopped
+    ports:
+      - "8766:8766"
+    environment:
+      APLV_HOME: /app
+    volumes:
+      # サンプルログ（読み取り専用）。別ディレクトリを試す場合は APLV_LOG_DIR を指定
+      - ${APLV_LOG_DIR:-./samples}:/app/logs/samples:ro
+      # SQLite インデックスの永続化（2 回目以降の起動を高速化）
+      - ./tmp:/app/tmp
+    command: ["--host", "0.0.0.0", "--port", "8766", "--dir", "/app/logs/samples"]
