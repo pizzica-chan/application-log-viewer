@@ -304,6 +304,9 @@ async function loadLogs() {
               })
           );
           const detail = await detailRes.json();
+          if (detail.loading) {
+            return;
+          }
           if (!detailRes.ok) {
             alert(detail.error || "詳細の取得に失敗しました。");
             return;

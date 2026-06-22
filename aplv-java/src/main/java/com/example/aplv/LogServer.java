@@ -58,6 +58,9 @@ public final class LogServer {
     private volatile String loadStatus = "idle"; // idle / loading / ready / error
     private volatile String loadError;
     private final AtomicLong loadProgress = new AtomicLong();
+    /** 読み込みワーカーの世代。新しい load で増加し、古いワーカーは結果を破棄する。 */
+    private final AtomicLong loadGeneration = new AtomicLong(0);
+    private volatile Thread loadWorker;
 
     private final Object loadLock = new Object();
     private final Object dbLock = new Object();
@@ -149,37 +152,59 @@ public final class LogServer {
     // ---- 読み込み（インデックス構築）--------------------------------------
 
     private void startLoad() {
+        final long gen = loadGeneration.incrementAndGet();
+        Thread previous;
         synchronized (loadLock) {
-            if ("loading".equals(loadStatus)) {
-                return;
-            }
+            previous = loadWorker;
             loadStatus = "loading";
             loadError = null;
             loadProgress.set(0);
+        }
+        if (previous != null) {
+            previous.interrupt();
         }
         final Path root = logRoot;
         final List<Path> paths = new ArrayList<>(logPaths);
 
         Thread worker = new Thread(() -> {
+            Connection newConn = null;
+            boolean adopted = false;
             try {
-                Connection newConn;
                 long total;
                 if (root == null) {
+                    if (isStale(gen)) {
+                        return;
+                    }
                     newConn = LogIndex.openMemory();
                     LogIndex.clearIndex(newConn);
                     total = 0;
                 } else {
+                    if (isStale(gen)) {
+                        return;
+                    }
                     IndexStore.ensureTmpDirFor(root);
                     newConn = LogIndex.openOrCreate(root);
                     if (paths.isEmpty()) {
-                        newConn.close();
+                        if (isStale(gen)) {
+                            return;
+                        }
+                        closeQuietly(newConn);
                         IndexStore.deleteIndexFiles(root);
+                        if (isStale(gen)) {
+                            return;
+                        }
                         newConn = LogIndex.openOrCreate(root);
                         LogIndex.clearIndex(newConn);
                         total = 0;
-                    } else if (LogIndex.needsRebuild(newConn, paths)) {
-                        newConn.close();
+                    } else if (LogIndex.needsRebuild(newConn, paths, enableFts)) {
+                        if (isStale(gen)) {
+                            return;
+                        }
+                        closeQuietly(newConn);
                         IndexStore.deleteIndexFiles(root);
+                        if (isStale(gen)) {
+                            return;
+                        }
                         newConn = LogIndex.openOrCreate(root);
                         total = LogIndex.buildIndex(newConn, paths, loadProgress::set, enableFts);
                     } else {
@@ -187,20 +212,52 @@ public final class LogServer {
                         loadProgress.set(total);
                     }
                 }
-                replaceConn(newConn);
+                if (isStale(gen)) {
+                    return;
+                }
                 synchronized (loadLock) {
+                    if (isStale(gen)) {
+                        return;
+                    }
+                    replaceConn(newConn);
+                    adopted = true;
                     loadProgress.set(total);
                     loadStatus = "ready";
                 }
             } catch (Throwable t) {
                 synchronized (loadLock) {
+                    if (isStale(gen)) {
+                        return;
+                    }
                     loadStatus = "error";
                     loadError = t.getMessage() != null ? t.getMessage() : t.toString();
                 }
+            } finally {
+                if (newConn != null && !adopted) {
+                    closeQuietly(newConn);
+                }
             }
         }, "aplv-loader");
+        synchronized (loadLock) {
+            loadWorker = worker;
+        }
         worker.setDaemon(true);
         worker.start();
+    }
+
+    private boolean isStale(long gen) {
+        return gen != loadGeneration.get();
+    }
+
+    private static void closeQuietly(Connection c) {
+        if (c == null) {
+            return;
+        }
+        try {
+            c.close();
+        } catch (Exception ignored) {
+            // クローズ失敗は無視
+        }
     }
 
     private void replaceConn(Connection newConn) {
@@ -352,9 +409,7 @@ public final class LogServer {
         synchronized (loadLock) {
             this.logRoot = root;
             this.logPaths = paths;
-            this.loadStatus = "idle";
             this.loadError = null;
-            this.loadProgress.set(0);
         }
         startLoad();
         try {
@@ -411,7 +466,7 @@ public final class LogServer {
         long limit;
         long offset;
         try {
-            limit = Math.min(parseLong(p.get("limit"), DEFAULT_LIMIT), MAX_LIMIT);
+            limit = Math.max(0, Math.min(parseLong(p.get("limit"), DEFAULT_LIMIT), MAX_LIMIT));
             offset = Math.max(parseLong(p.get("offset"), 0), 0);
         } catch (NumberFormatException e) {
             sendErrorJson(ex, 400, "limit/offset は整数で指定してください");
@@ -455,6 +510,18 @@ public final class LogServer {
     // ---- API: logs/detail -------------------------------------------------
 
     private void handleDetail(HttpExchange ex) throws IOException {
+        if ("loading".equals(loadStatus)) {
+            JsonObject payload = new JsonObject();
+            payload.addProperty("loading", true);
+            payload.addProperty("load_progress", loadProgress.get());
+            sendJson(ex, 200, payload);
+            return;
+        }
+        if ("error".equals(loadStatus)) {
+            sendErrorJson(ex, 500, loadError != null ? loadError : "読み込みに失敗しました");
+            return;
+        }
+
         Map<String, String> p = queryParams(ex);
         String source = p.getOrDefault("source", "");
         if (source.isEmpty()) {
@@ -470,10 +537,14 @@ public final class LogServer {
         }
 
         LogIndex.EntryRow entry;
+        String timestamp = p.get("timestamp");
         try {
             synchronized (dbLock) {
-                entry = LogIndex.findEntry(conn, source, lineNo);
+                entry = LogIndex.findEntry(conn, source, lineNo, timestamp);
             }
+        } catch (IllegalArgumentException e) {
+            sendErrorJson(ex, 400, e.getMessage());
+            return;
         } catch (Exception e) {
             sendErrorJson(ex, 500, e.getMessage());
             return;

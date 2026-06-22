@@ -179,11 +179,12 @@ public final class LogIndex {
     }
 
     /** 保存済みフィンガープリントと異なれば true（再インデックスが必要）。 */
-    public static boolean needsRebuild(Connection conn, List<Path> paths) throws SQLException, IOException {
+    public static boolean needsRebuild(Connection conn, List<Path> paths, boolean enableFts)
+            throws SQLException, IOException {
         if (paths.isEmpty()) {
             return false;
         }
-        String fp = fileFingerprint(paths);
+        String fp = indexFingerprint(paths, enableFts);
         String stored = null;
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT value FROM meta WHERE key = 'fingerprint'")) {
@@ -196,12 +197,30 @@ public final class LogIndex {
         return !fp.equals(stored);
     }
 
+    /** ファイル集合 + FTS 設定のフィンガープリント（meta 保存用）。 */
+    private static String indexFingerprint(List<Path> paths, boolean enableFts) throws IOException {
+        return fileFingerprint(paths) + "\nfts:" + (enableFts ? "1" : "0");
+    }
+
     /** entries / files テーブルを空にする。 */
     public static void clearIndex(Connection conn) throws SQLException {
         try (Statement st = conn.createStatement()) {
             st.execute("DELETE FROM entries");
             st.execute("DELETE FROM files");
         }
+    }
+
+    /**
+     * 構築失敗・中断時に部分索引を破棄し、次回 {@link #needsRebuild} が true になるようにする。
+     * 途中 commit 済みの行も含めてクリアする。
+     */
+    private static void abortIncompleteBuild(Connection conn) throws SQLException {
+        clearIndex(conn);
+        dropFts(conn);
+        try (Statement st = conn.createStatement()) {
+            st.execute("DELETE FROM meta WHERE key = 'fingerprint'");
+        }
+        conn.commit();
     }
 
     public static long entryCount(Connection conn) throws SQLException {
@@ -278,7 +297,12 @@ public final class LogIndex {
             dropFts(conn);
             hasFts = false;
         }
-        String fp = fileFingerprint(paths);
+        // 構築中は fingerprint を消し、並行 load がキャッシュ再利用しないようにする。
+        try (Statement st = conn.createStatement()) {
+            st.execute("DELETE FROM meta WHERE key = 'fingerprint'");
+        }
+        conn.commit();
+        String fp = indexFingerprint(paths, enableFts);
 
         // files テーブルを先に登録（FK 整合のため）。
         try (PreparedStatement ps = conn.prepareStatement(
@@ -322,6 +346,7 @@ public final class LogIndex {
 
         long total = 0;
         long nextId = 1;
+        boolean buildComplete = false;
         try (PreparedStatement ins = conn.prepareStatement(
                 "INSERT INTO entries (id, file_id, line_no, byte_offset, end_byte_offset, ts_millis, "
                         + "logger, level, thread, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -336,6 +361,7 @@ public final class LogIndex {
                     break;
                 }
                 if (batch == POISON) {
+                    buildComplete = true;
                     break;
                 }
                 for (Row r : batch) {
@@ -380,9 +406,12 @@ public final class LogIndex {
         }
 
         Throwable t = error.get();
-        if (t != null) {
-            conn.rollback();
-            throw new IOException("インデックス構築に失敗しました: " + t.getMessage(), t);
+        if (t != null || !buildComplete) {
+            abortIncompleteBuild(conn);
+            if (t != null) {
+                throw new IOException("インデックス構築に失敗しました: " + t.getMessage(), t);
+            }
+            throw new IOException("インデックス構築が中断されました");
         }
 
         try (PreparedStatement ps = conn.prepareStatement(
@@ -520,6 +549,24 @@ public final class LogIndex {
         e.message = rs.getString(10);
         e.source = rs.getString(11);
         return e;
+    }
+
+    /** ソースパス・行番号で 1 件検索（timestamp 指定時は行の特定を補助）。 */
+    public static EntryRow findEntry(Connection conn, String source, long lineNo, String timestampIso)
+            throws SQLException {
+        if (timestampIso != null && !timestampIso.isEmpty()) {
+            long tsMillis = TimeUtil.parseUiDatetime(timestampIso);
+            try (PreparedStatement ps = conn.prepareStatement(
+                    SELECT_BASE + "WHERE f.path = ? AND e.line_no = ? AND e.ts_millis = ? LIMIT 1")) {
+                ps.setString(1, source);
+                ps.setLong(2, lineNo);
+                ps.setLong(3, tsMillis);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rowFrom(rs) : null;
+                }
+            }
+        }
+        return findEntry(conn, source, lineNo);
     }
 
     /** ソースパス・行番号で 1 件検索。 */

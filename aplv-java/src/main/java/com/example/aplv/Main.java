@@ -36,7 +36,16 @@ public final class Main {
                     host = requireValue(args, ++i, "--host");
                     break;
                 case "--port":
-                    port = Integer.parseInt(requireValue(args, ++i, "--port"));
+                    try {
+                        port = Integer.parseInt(requireValue(args, ++i, "--port"));
+                        if (port <= 0 || port > 65535) {
+                            System.err.println("--port は 1〜65535 の整数を指定してください");
+                            System.exit(2);
+                        }
+                    } catch (NumberFormatException e) {
+                        System.err.println("--port には整数を指定してください");
+                        System.exit(2);
+                    }
                     break;
                 case "--fts":
                     enableFts = true;

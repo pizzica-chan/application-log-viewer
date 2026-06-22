@@ -53,13 +53,26 @@ class LogIndexTest {
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, paths, null, false);
-            assertFalse(LogIndex.needsRebuild(conn, paths));
+            assertFalse(LogIndex.needsRebuild(conn, paths, false));
 
             Files.write(log,
                     "2026-06-15 00:00:02.000[main][INFO][com.example.B] - two\n"
                             .getBytes(StandardCharsets.UTF_8),
                     StandardOpenOption.APPEND);
-            assertTrue(LogIndex.needsRebuild(conn, paths));
+            assertTrue(LogIndex.needsRebuild(conn, paths, false));
+        }
+    }
+
+    @Test
+    void needsRebuildWhenFtsFlagChanges(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15 00:00:01.000[main][INFO][com.example.A] - one\n");
+        List<Path> paths = Collections.singletonList(log);
+
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, paths, null, false);
+            assertFalse(LogIndex.needsRebuild(conn, paths, false));
+            assertTrue(LogIndex.needsRebuild(conn, paths, true));
         }
     }
 
