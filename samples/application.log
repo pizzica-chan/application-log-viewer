@@ -8,3 +8,4 @@ java.lang.NullPointerException: null
 2026-06-15 00:19:13.100[main][WARN][com.example.web.HogeController] - リトライを実行します (attempt=1)
 2026-06-15 00:19:14.000[pool-1-thread-1][DEBUG][com.example.db.DatabasePool] - コネクションを取得しました
 2026-05-27 00:00:03.965[HogeController][ERROR][main] - 旧形式ログ（Logger][LEVEL][Thread] も対応
+2026-06-15 00:19:10.100[HogeController][INFO][main:[12345] ch[00]] - スレッド内に [] を含む形式も対応

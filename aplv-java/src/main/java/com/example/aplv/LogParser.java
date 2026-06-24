@@ -12,7 +12,8 @@ import java.util.regex.Pattern;
  * <p>対応形式（いずれも LEVEL は 2 番目の {@code []}）:
  * <ul>
  *   <li>Tomcat: {@code YYYY-MM-DD HH:MM:SS.mmm[Thread][LEVEL][Logger(FQCN)] - Message}</li>
- *   <li>その他: {@code YYYY-MM-DD HH:MM:SS.mmm[Logger][LEVEL][Thread] - Message}</li>
+ *   <li>その他: {@code YYYY-MM-DD HH:MM:SS.mmm[Logger][LEVEL][Thread] - Message}
+ *       （Thread に {@code []} を含む場合も可。例: {@code main:[12345] ch[00]}）</li>
  * </ul>
  *
  * <p>大容量ログ向けに、まずバイト列だけでヘッダ行らしさを判定し（{@link #looksLikeHeader}）、
@@ -30,8 +31,11 @@ public final class LogParser {
     private static final Set<String> KNOWN_LEVELS = new HashSet<>(Arrays.asList(
             "TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "FATAL", "SEVERE"));
 
+    /** 3 番目フィールド末尾とメッセージの区切り（{@code ] - message}）。 */
+    private static final String FIELD3_END = "] - ";
+
     private static final Pattern THREAD_HINT = Pattern.compile(
-            "(?:^main$|exec-\\d+|pool-\\d+-thread-\\d+|scheduler-\\d+|ajp-|http-nio-|catalina-)",
+            "(?:^main(?:$|:)|exec-\\d+|pool-\\d+-thread-\\d+|scheduler-\\d+|ajp-|http-nio-|catalina-)",
             Pattern.CASE_INSENSITIVE);
 
     /** 解析結果（エントリ先頭行）。 */
@@ -108,19 +112,16 @@ public final class LogParser {
             return null;
         }
         int s3 = e2 + 2;
-        int e3 = rest.indexOf(']', s3);
+        // 3 番目フィールド内に [] がネストする場合があるため、単純な ']' ではなく
+        // 固定区切り "] - " で末尾を特定する（O(n) の indexOf 1 回、括弧走査より軽量）。
+        int e3 = rest.indexOf(FIELD3_END, s3);
         if (e3 < 0) {
-            return null;
-        }
-        // "] - message"
-        if (e3 + 4 > rest.length() || rest.charAt(e3 + 1) != ' '
-                || rest.charAt(e3 + 2) != '-' || rest.charAt(e3 + 3) != ' ') {
             return null;
         }
         String field1 = rest.substring(1, e1);
         String field2 = rest.substring(s2, e2);
         String field3 = rest.substring(s3, e3);
-        String message = rest.substring(e3 + 4);
+        String message = rest.substring(e3 + FIELD3_END.length());
 
         String level = field2.toUpperCase();
         if (!KNOWN_LEVELS.contains(level)) {

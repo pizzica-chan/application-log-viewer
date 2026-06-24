@@ -51,6 +51,17 @@ class LogParserTest {
     }
 
     @Test
+    void legacyFormatWithNestedBracketsInThread() {
+        LogParser.ParsedLine p = LogParser.parseLine(
+                "2026-06-15 00:19:10.100[HogeController][INFO][main:[12345] ch[00]] - メッセージ");
+        assertNotNull(p);
+        assertEquals("HogeController", p.logger);
+        assertEquals("INFO", p.level);
+        assertEquals("main:[12345] ch[00]", p.thread);
+        assertEquals("メッセージ", p.message);
+    }
+
+    @Test
     void japaneseMessage() {
         LogParser.ParsedLine p = LogParser.parseLine(
                 "2026-06-15 00:19:10.100[main][INFO][com.example.StartupRunner] - アプリケーションを起動しました");

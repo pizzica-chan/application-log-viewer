@@ -153,6 +153,8 @@ docker compose down
 
 形式: `YYYY-MM-DD HH:MM:SS.mmm[Logger][LEVEL][Thread] - Message`
 
+Thread に `[]` を含む場合（例: `main:[12345] ch[00]`）も対応します。
+
 いずれも LEVEL は 2 番目の `[]` 内にあり、FQCN（`.` 含む）やスレッド名パターンから自動判別します。
 
 ```
