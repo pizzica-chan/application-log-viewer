@@ -134,6 +134,31 @@ function setDatetimeFields(start, end) {
   els.untilTime.value = end.time;
 }
 
+/** プログラムから期間を設定するとき、日付入力の min/max を広げる。 */
+function widenDateInputBounds(startDate, endDate) {
+  const minDate = startDate <= endDate ? startDate : endDate;
+  const maxDate = startDate <= endDate ? endDate : startDate;
+  if (!els.sinceDate.min || minDate < els.sinceDate.min) {
+    els.sinceDate.min = minDate;
+    els.untilDate.min = minDate;
+  }
+  if (!els.sinceDate.max || maxDate > els.sinceDate.max) {
+    els.sinceDate.max = maxDate;
+    els.untilDate.max = maxDate;
+  }
+}
+
+function setExactQueryRange(sinceMs, untilMs) {
+  const start = msJstToFields(sinceMs);
+  const end = msJstToFields(untilMs);
+  widenDateInputBounds(start.date, end.date);
+  exactQueryRange = {
+    since: msJstToApiDatetime(sinceMs),
+    until: msJstToApiDatetime(untilMs),
+  };
+  setDatetimeFields(start, end);
+}
+
 function clearDatetimeFields() {
   els.sinceDate.value = "";
   els.sinceTime.value = "";
@@ -242,19 +267,7 @@ function applyAroundMinutes(isoTimestamp, minutes) {
   const centerMs = isoToMsJst(isoTimestamp);
   if (centerMs == null) return false;
   const delta = minutes * 60 * 1000;
-  let sinceMs = centerMs - delta;
-  let untilMs = centerMs + delta;
-  if (metaRange.first && metaRange.last) {
-    const firstMs = isoToMsJst(metaRange.first);
-    const lastMs = isoToMsJst(metaRange.last);
-    if (firstMs != null) sinceMs = Math.max(firstMs, sinceMs);
-    if (lastMs != null) untilMs = Math.min(lastMs, untilMs);
-  }
-  exactQueryRange = {
-    since: msJstToApiDatetime(sinceMs),
-    until: msJstToApiDatetime(untilMs),
-  };
-  setDatetimeFields(msJstToFields(sinceMs), msJstToFields(untilMs));
+  setExactQueryRange(centerMs - delta, centerMs + delta);
   offset = 0;
   loadLogs();
   return true;
