@@ -25,6 +25,10 @@
   </section>
 
   <section class="filters">
+    <div class="filters-toolbar">
+      <span class="filters-toolbar-label">検索条件</span>
+      <button type="button" id="regex-samples" class="chip">正規表現サンプル</button>
+    </div>
     <label>
       レベル
       <input id="level" placeholder="ERROR / WARN,ERROR">
@@ -125,9 +129,94 @@
   </dialog>
 
   <dialog id="detail">
-    <form method="dialog">
+    <form method="dialog" class="detail-form">
       <pre id="detail-body"></pre>
-      <button>閉じる</button>
+      <div class="detail-actions">
+        <button type="button" id="detail-search-around">前後5分間のログを検索</button>
+        <button type="submit">閉じる</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="regex-samples-dialog">
+    <form method="dialog" class="regex-samples-form">
+      <h2>正規表現サンプル</h2>
+      <p class="regex-samples-note">
+        ロガー・スレッド・メッセージ・全文検索・ソースファイルの各フィールドは正規表現に対応しています。
+        マッチは大文字小文字を区別しません。
+      </p>
+      <table class="regex-samples-table">
+        <thead>
+          <tr>
+            <th>パターン</th>
+            <th>説明</th>
+            <th>マッチ例</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Exception</code></td>
+            <td>文字列を含む（部分一致）</td>
+            <td>NullPointerException</td>
+          </tr>
+          <tr>
+            <td><code>error|warn</code></td>
+            <td>いずれかに一致（OR）</td>
+            <td>ERROR, WARN</td>
+          </tr>
+          <tr>
+            <td><code>Hoge.*Controller</code></td>
+            <td>任意の文字列を挟む</td>
+            <td>HogeUserController</td>
+          </tr>
+          <tr>
+            <td><code>^NullPointer</code></td>
+            <td>先頭から一致</td>
+            <td>NullPointerException: null</td>
+          </tr>
+          <tr>
+            <td><code>timeout$</code></td>
+            <td>末尾まで一致</td>
+            <td>connection timeout</td>
+          </tr>
+          <tr>
+            <td><code>org\.example\..*</code></td>
+            <td>ドットをリテラルに（FQCN の prefix）</td>
+            <td>org.example.service.UserService</td>
+          </tr>
+          <tr>
+            <td><code>application\.log</code></td>
+            <td>ファイル名の部分一致</td>
+            <td>C:\logs\application.log</td>
+          </tr>
+          <tr>
+            <td><code>ajp-nio-8009</code></td>
+            <td>ハイフンを含むスレッド名</td>
+            <td>ajp-nio-8009-exec-24</td>
+          </tr>
+          <tr>
+            <td><code>\[ERROR\]</code></td>
+            <td>角括弧をリテラルに（エスケープ）</td>
+            <td>[ERROR]</td>
+          </tr>
+          <tr>
+            <td><code>\d{3}\.\d{3}\.\d{3}\.\d{3}</code></td>
+            <td>IPv4 アドレス形式</td>
+            <td>192.168.1.10</td>
+          </tr>
+          <tr>
+            <td><code>userId=\d+</code></td>
+            <td>数字の連続</td>
+            <td>userId=12345</td>
+          </tr>
+          <tr>
+            <td><code>(?s)Exception.*at com\.example</code></td>
+            <td>複数行にまたがる全文検索（grep 向け）</td>
+            <td>スタックトレース全体</td>
+          </tr>
+        </tbody>
+      </table>
+      <button type="submit">閉じる</button>
     </form>
   </dialog>
 

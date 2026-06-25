@@ -83,6 +83,20 @@ header h1 {
   background: var(--panel);
 }
 
+.filters-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+}
+
+.filters-toolbar-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .datetime-filter {
   grid-column: 1 / -1;
   display: flex;
@@ -328,6 +342,56 @@ dialog pre {
   word-break: break-all;
   max-height: 60vh;
   overflow: auto;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.detail-actions button[type="submit"] {
+  background: var(--panel);
+  color: var(--text);
+}
+
+#detail-search-around {
+  background: var(--accent);
+  color: #fff;
+}
+
+.regex-samples-form h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.regex-samples-note {
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.regex-samples-table {
+  width: 100%;
+  margin-bottom: 1rem;
+  font-size: 0.8125rem;
+}
+
+.regex-samples-table th {
+  position: static;
+  background: var(--bg);
+}
+
+.regex-samples-table code {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.regex-samples-form button[type="submit"] {
+  background: var(--panel);
+  color: var(--text);
 }
 
 .browse-form h2 {
