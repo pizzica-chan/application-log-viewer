@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -41,6 +42,11 @@ public final class LogIndex {
     private static final long PROGRESS_INTERVAL = 50_000L;
     /** トランザクションを区切るコミット間隔（巨大トランザクションによるメモリ肥大を防ぐ）。 */
     private static final long COMMIT_INTERVAL = 200_000L;
+    /** skipped 行サンプルの上限（UI 表示用）。 */
+    private static final int MAX_SKIPPED_SAMPLES = 5;
+    private static final int PREVIEW_MAX_LEN = 120;
+    private static final String META_SKIPPED_LINES = "skipped_lines";
+    private static final String META_SKIPPED_SAMPLES = "skipped_samples";
 
     static {
         try {
@@ -207,6 +213,8 @@ public final class LogIndex {
         try (Statement st = conn.createStatement()) {
             st.execute("DELETE FROM entries");
             st.execute("DELETE FROM files");
+            st.execute("DELETE FROM meta WHERE key IN ('"
+                    + META_SKIPPED_LINES + "', '" + META_SKIPPED_SAMPLES + "')");
         }
     }
 
@@ -227,6 +235,48 @@ public final class LogIndex {
         try (Statement st = conn.createStatement();
              ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM entries")) {
             return rs.next() ? rs.getLong(1) : 0L;
+        }
+    }
+
+    /** 解析できなかった孤立行の件数（meta 未保存時は 0）。 */
+    public static int getSkippedLineCount(Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT value FROM meta WHERE key = ?")) {
+            ps.setString(1, META_SKIPPED_LINES);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Integer.parseInt(rs.getString(1));
+                }
+            }
+        }
+        return 0;
+    }
+
+    /** 解析できなかった孤立行のサンプル（最大 {@link #MAX_SKIPPED_SAMPLES} 件）。 */
+    public static List<SkippedLine> getSkippedLineSamples(Connection conn) throws SQLException {
+        String json = null;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT value FROM meta WHERE key = ?")) {
+            ps.setString(1, META_SKIPPED_SAMPLES);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    json = rs.getString(1);
+                }
+            }
+        }
+        if (json == null || json.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return deserializeSkippedSamples(json);
+    }
+
+    /** files テーブルから file_id に対応するパスを返す。 */
+    public static String filePath(Connection conn, long fileId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT path FROM files WHERE id = ?")) {
+            ps.setLong(1, fileId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
         }
     }
 
@@ -273,10 +323,23 @@ public final class LogIndex {
      * <p>複数ファイルを並列パース → 単一スレッドで一括 INSERT。同一ファイル内で
      * 連続する非ヘッダ行（スタックトレース等）は、次ヘッダ行の開始 offset までを
      * {@code end_byte_offset} として記録する。
-     *
-     * @return 取り込んだエントリ総数
      */
-    public static long buildIndex(Connection conn, List<Path> paths, ProgressCallback progress,
+    public static final class BuildResult {
+        public final long entryCount;
+        public final int skippedLines;
+        public final List<SkippedLine> skippedSamples;
+
+        BuildResult(long entryCount, int skippedLines, List<SkippedLine> skippedSamples) {
+            this.entryCount = entryCount;
+            this.skippedLines = skippedLines;
+            this.skippedSamples = skippedSamples;
+        }
+    }
+
+    /**
+     * @return 取り込んだエントリ総数と skipped 行の集計
+     */
+    public static BuildResult buildIndex(Connection conn, List<Path> paths, ProgressCallback progress,
             boolean enableFts) throws SQLException, IOException {
         boolean prevAutoCommit = conn.getAutoCommit();
         conn.setAutoCommit(false);
@@ -287,7 +350,7 @@ public final class LogIndex {
         }
     }
 
-    private static long buildIndexTx(Connection conn, List<Path> paths, ProgressCallback progress,
+    private static BuildResult buildIndexTx(Connection conn, List<Path> paths, ProgressCallback progress,
             boolean enableFts) throws SQLException, IOException {
         clearIndex(conn);
         boolean hasFts;
@@ -324,13 +387,15 @@ public final class LogIndex {
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         AtomicReference<Throwable> error = new AtomicReference<>();
         AtomicInteger remaining = new AtomicInteger(paths.size());
+        AtomicLong skippedCounter = new AtomicLong();
+        List<SkippedLine> skippedSamples = Collections.synchronizedList(new ArrayList<SkippedLine>());
 
         for (int i = 0; i < paths.size(); i++) {
             final long fileId = i + 1L;
             final Path path = paths.get(i);
             pool.submit(() -> {
                 try {
-                    parseFileInto(fileId, path, queue, hasFts);
+                    parseFileInto(fileId, path, queue, hasFts, skippedCounter, skippedSamples);
                 } catch (Throwable t) {
                     error.compareAndSet(null, t);
                 } finally {
@@ -419,16 +484,146 @@ public final class LogIndex {
             ps.setString(1, fp);
             ps.executeUpdate();
         }
+        saveSkippedMeta(conn, (int) skippedCounter.get(), skippedSamples);
         conn.commit();
 
         if (progress != null) {
             progress.onProgress(total);
         }
-        return total;
+        return new BuildResult(total, (int) skippedCounter.get(), new ArrayList<>(skippedSamples));
+    }
+
+    private static void saveSkippedMeta(Connection conn, int count, List<SkippedLine> samples)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")) {
+            ps.setString(1, META_SKIPPED_LINES);
+            ps.setString(2, String.valueOf(count));
+            ps.executeUpdate();
+            ps.setString(1, META_SKIPPED_SAMPLES);
+            ps.setString(2, serializeSkippedSamples(samples));
+            ps.executeUpdate();
+        }
+    }
+
+    private static String serializeSkippedSamples(List<SkippedLine> samples) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('[');
+        for (int i = 0; i < samples.size(); i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            SkippedLine s = samples.get(i);
+            sb.append("{\"file_id\":").append(s.fileId)
+                    .append(",\"line_no\":").append(s.lineNo)
+                    .append(",\"preview\":").append(jsonString(s.preview)).append('}');
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
+    private static List<SkippedLine> deserializeSkippedSamples(String json) {
+        List<SkippedLine> out = new ArrayList<>();
+        int i = 0;
+        while (i < json.length()) {
+            int objStart = json.indexOf('{', i);
+            if (objStart < 0) {
+                break;
+            }
+            int objEnd = json.indexOf('}', objStart);
+            if (objEnd < 0) {
+                break;
+            }
+            String obj = json.substring(objStart + 1, objEnd);
+            long fileId = extractJsonLong(obj, "file_id");
+            long lineNo = extractJsonLong(obj, "line_no");
+            String preview = extractJsonString(obj, "preview");
+            out.add(new SkippedLine(fileId, lineNo, preview));
+            i = objEnd + 1;
+        }
+        return out;
+    }
+
+    private static long extractJsonLong(String obj, String key) {
+        String needle = "\"" + key + "\":";
+        int idx = obj.indexOf(needle);
+        if (idx < 0) {
+            return 0L;
+        }
+        int start = idx + needle.length();
+        int end = start;
+        while (end < obj.length() && Character.isDigit(obj.charAt(end))) {
+            end++;
+        }
+        return Long.parseLong(obj.substring(start, end));
+    }
+
+    private static String extractJsonString(String obj, String key) {
+        String needle = "\"" + key + "\":\"";
+        int idx = obj.indexOf(needle);
+        if (idx < 0) {
+            return "";
+        }
+        int start = idx + needle.length();
+        StringBuilder sb = new StringBuilder();
+        for (int i = start; i < obj.length(); i++) {
+            char c = obj.charAt(i);
+            if (c == '\\' && i + 1 < obj.length()) {
+                char next = obj.charAt(i + 1);
+                if (next == 'n') {
+                    sb.append('\n');
+                } else if (next == 'r') {
+                    sb.append('\r');
+                } else if (next == 't') {
+                    sb.append('\t');
+                } else if (next == '\\' || next == '"') {
+                    sb.append(next);
+                } else {
+                    sb.append(next);
+                }
+                i++;
+                continue;
+            }
+            if (c == '"') {
+                break;
+            }
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    private static String jsonString(String value) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('"');
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '\\':
+                    sb.append("\\\\");
+                    break;
+                case '"':
+                    sb.append("\\\"");
+                    break;
+                case '\n':
+                    sb.append("\\n");
+                    break;
+                case '\r':
+                    sb.append("\\r");
+                    break;
+                case '\t':
+                    sb.append("\\t");
+                    break;
+                default:
+                    sb.append(c);
+                    break;
+            }
+        }
+        sb.append('"');
+        return sb.toString();
     }
 
     private static void parseFileInto(long fileId, Path path, BlockingQueue<List<Row>> queue,
-            boolean collectBody)
+            boolean collectBody, AtomicLong skippedCounter, List<SkippedLine> skippedSamples)
             throws IOException, InterruptedException {
         try (InputStream raw = Files.newInputStream(path);
              InputStream in = new BufferedInputStream(raw, 1 << 16);
@@ -447,8 +642,14 @@ public final class LogIndex {
                 LogParser.ParsedLine parsed =
                         header ? LogParser.parse(reader.lineBuf, reader.lineLen) : null;
                 if (parsed == null) {
-                    // 継続行（スタックトレース等）は直前エントリの本文に蓄積。
-                    if (collectBody && pending != null) {
+                    if (pending == null) {
+                        skippedCounter.incrementAndGet();
+                        if (skippedSamples.size() < MAX_SKIPPED_SAMPLES) {
+                            skippedSamples.add(new SkippedLine(fileId, lineNo,
+                                    previewLine(reader.lineBuf, reader.lineLen)));
+                        }
+                    } else if (collectBody) {
+                        // 継続行（スタックトレース等）は直前エントリの本文に蓄積。
                         pending.bodyBuf.append(new String(
                                 reader.lineBuf, 0, reader.lineLen, StandardCharsets.UTF_8));
                     }
@@ -487,6 +688,18 @@ public final class LogIndex {
                 queue.put(batch);
             }
         }
+    }
+
+    private static String previewLine(byte[] buf, int len) {
+        int end = len;
+        while (end > 0 && (buf[end - 1] == '\n' || buf[end - 1] == '\r')) {
+            end--;
+        }
+        String trimmed = new String(buf, 0, end, StandardCharsets.UTF_8);
+        if (trimmed.length() <= PREVIEW_MAX_LEN) {
+            return trimmed;
+        }
+        return trimmed.substring(0, PREVIEW_MAX_LEN - 3) + "...";
     }
 
     private static <T> void putUninterruptibly(BlockingQueue<T> queue, T item) {

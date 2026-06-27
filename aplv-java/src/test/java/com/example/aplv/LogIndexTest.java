@@ -56,14 +56,16 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            long total = LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
-            assertEquals(2, total);
+            LogIndex.BuildResult built = LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            assertEquals(2, built.entryCount);
+            assertEquals(0, built.skippedLines);
 
             LogIndex.EntryRow err = LogIndex.findEntry(conn, PathUtil.normalizePath(log), 1);
             assertNotNull(err);
             String raw = LogIndex.readEntryRaw(log, err.byteOffset, err.endByteOffset);
             assertTrue(raw.contains("RuntimeException"));
             assertTrue(raw.contains("Foo.run"));
+            assertEquals(0, LogIndex.getSkippedLineCount(conn));
         }
     }
 
@@ -194,8 +196,7 @@ class LogIndexTest {
                 "2026-06-15 00:00:02.000[main][WARN][com.example.B] - b1\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            long total = LogIndex.buildIndex(conn, Arrays.asList(a, b), null, false);
-            assertEquals(3, total);
+            assertEquals(3, LogIndex.buildIndex(conn, Arrays.asList(a, b), null, false).entryCount);
 
             QueryFilter all = new QueryFilter();
             LogQuery.Result r = LogQuery.queryLogs(conn, all, 0, 10);
@@ -274,6 +275,32 @@ class LogIndexTest {
             assertEquals(3, page2.total);
             assertEquals(1, page2.page.size());
             assertEquals("three", page2.page.get(0).message);
+        }
+    }
+
+    /** ファイル先頭の孤立行のみ skipped にカウントし、スタックトレース行は含めないこと。 */
+    @Test
+    void countsOrphanSkippedLinesOnly(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "# rotation marker\n"
+                        + "not a log line\n"
+                        + "2026-06-15 00:00:01.000[main][ERROR][com.example.Foo] - failed\n"
+                        + "java.lang.RuntimeException: boom\n"
+                        + "\tat com.example.Foo.run(Foo.java:10)\n"
+                        + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - ok\n");
+
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.BuildResult built = LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            assertEquals(2, built.entryCount);
+            assertEquals(2, built.skippedLines);
+            assertEquals(2, built.skippedSamples.size());
+            assertEquals(1, built.skippedSamples.get(0).lineNo);
+            assertEquals("# rotation marker", built.skippedSamples.get(0).preview);
+
+            assertEquals(2, LogIndex.getSkippedLineCount(conn));
+            assertFalse(LogIndex.getSkippedLineSamples(conn).isEmpty());
+            assertFalse(LogIndex.needsRebuild(conn, Collections.singletonList(log), false));
+            assertEquals(2, LogIndex.getSkippedLineCount(conn));
         }
     }
 }

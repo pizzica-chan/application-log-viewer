@@ -1,0 +1,8 @@
+# rotated at 2026-06-15 — コメント行（ログエントリとして認識されない）
+--- not a log line ---
+2026-06-15 00:19:10.100[main][INFO][com.example.StartupRunner] - 正常行1
+2026-06-15 00:19:11.200[http-nio-8080-exec-1][INFO][com.example.web.HogeController] - 正常行2
+2026-06-15 00:19:12.300[ajp-nio-8009-exec-24][ERROR][com.example.web.HogeController] - エラー（スタックトレース付き）
+java.lang.RuntimeException: boom
+	at com.example.web.HogeController.process(HogeController.java:42)
+2026-06-15 00:19:13.100[main][WARN][com.example.web.HogeController] - 正常行3

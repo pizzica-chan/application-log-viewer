@@ -6,6 +6,9 @@ let metaRange = { first: null, last: null };
 
 const els = {
   meta: document.getElementById("meta"),
+  parseWarning: document.getElementById("parse-warning"),
+  parseWarningText: document.getElementById("parse-warning-text"),
+  parseWarningSamples: document.getElementById("parse-warning-samples"),
   logDir: document.getElementById("log-dir"),
   browse: document.getElementById("browse"),
   loadDir: document.getElementById("load-dir"),
@@ -344,6 +347,33 @@ async function loadMeta(options = {}) {
   }
 }
 
+function updateParseWarning(data) {
+  const skipped = data.skipped_lines || 0;
+  if (skipped <= 0) {
+    els.parseWarning.hidden = true;
+    els.parseWarningText.textContent = "";
+    els.parseWarningSamples.innerHTML = "";
+    return;
+  }
+  els.parseWarning.hidden = false;
+  els.parseWarningText.textContent =
+    `${skipped.toLocaleString()} 行を Java アプリログ形式として認識できませんでした` +
+    "（先頭の孤立行など。スタックトレース等の継続行は除く）。";
+  els.parseWarningSamples.innerHTML = "";
+  const samples = data.skipped_samples || [];
+  for (const s of samples) {
+    const li = document.createElement("li");
+    li.textContent = `${s.source}:${s.line_no} — ${s.preview}`;
+    li.title = s.preview;
+    els.parseWarningSamples.appendChild(li);
+  }
+  if (skipped > samples.length) {
+    const li = document.createElement("li");
+    li.textContent = `…他 ${(skipped - samples.length).toLocaleString()} 行`;
+    els.parseWarningSamples.appendChild(li);
+  }
+}
+
 function updateMeta(data) {
   if (data.directory) {
     els.logDir.value = data.directory;
@@ -352,6 +382,7 @@ function updateMeta(data) {
     metaRange = { first: null, last: null };
     els.meta.textContent = "ログファイル未読み込み — ディレクトリを選択してください";
     els.fileList.textContent = "";
+    updateParseWarning({});
     setBackgroundLoading(false);
     setLoadingUi(false);
     clearLoadPoll();
@@ -362,6 +393,7 @@ function updateMeta(data) {
     metaRange = { first: null, last: null };
     els.meta.textContent = `読み込みエラー: ${data.load_error}`;
     els.fileList.textContent = data.files.join(" | ");
+    updateParseWarning({});
     setBackgroundLoading(false);
     setLoadingUi(false);
     clearLoadPoll();
@@ -373,6 +405,7 @@ function updateMeta(data) {
     const message = `ログを読み込み中... ${data.load_progress.toLocaleString()} 行`;
     els.meta.textContent = `${message} / ファイル ${data.files.length} 件`;
     els.fileList.textContent = data.files.join(" | ");
+    updateParseWarning({});
     setBackgroundLoading(true, message);
     setLoadingUi(true);
     scheduleLoadPoll();
@@ -384,6 +417,7 @@ function updateMeta(data) {
     `${data.total.toLocaleString()} 行 / ファイル ${data.files.length} 件` +
     (data.first ? ` / ${data.first} 〜 ${data.last}` : "");
   els.fileList.textContent = data.files.join(" | ");
+  updateParseWarning(data);
   setBackgroundLoading(false);
   setLoadingUi(false);
   clearLoadPoll();

@@ -206,7 +206,9 @@ public final class LogServer {
                             return;
                         }
                         newConn = LogIndex.openOrCreate(root);
-                        total = LogIndex.buildIndex(newConn, paths, loadProgress::set, enableFts);
+                        LogIndex.BuildResult built =
+                                LogIndex.buildIndex(newConn, paths, loadProgress::set, enableFts);
+                        total = built.entryCount;
                     } else {
                         total = LogIndex.entryCount(newConn);
                         loadProgress.set(total);
@@ -311,6 +313,24 @@ public final class LogServer {
         payload.addProperty("total", total);
         payload.addProperty("first", first);
         payload.addProperty("last", last);
+        if (!loading && "ready".equals(loadStatus)) {
+            synchronized (dbLock) {
+                int skipped = LogIndex.getSkippedLineCount(conn);
+                if (skipped > 0) {
+                    payload.addProperty("skipped_lines", skipped);
+                    JsonArray samples = new JsonArray();
+                    for (SkippedLine s : LogIndex.getSkippedLineSamples(conn)) {
+                        JsonObject o = new JsonObject();
+                        String source = LogIndex.filePath(conn, s.fileId);
+                        o.addProperty("source", source != null ? source : "");
+                        o.addProperty("line_no", s.lineNo);
+                        o.addProperty("preview", s.preview);
+                        samples.add(o);
+                    }
+                    payload.add("skipped_samples", samples);
+                }
+            }
+        }
         if (loadError != null) {
             payload.addProperty("load_error", loadError);
         }
