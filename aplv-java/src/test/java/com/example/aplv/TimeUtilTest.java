@@ -2,12 +2,32 @@ package com.example.aplv;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
+/**
+ * {@link TimeUtil} の単体試験。
+ *
+ * <p>試験内容:
+ * <ul>
+ *   <li>ログ行先頭 23 文字（{@code yyyy-MM-dd HH:mm:ss.SSS}）のバイト列解析</li>
+ *   <li>UI から渡される日時文字列の複数形式（T 区切り、日付のみ、ミリ秒省略）の解析</li>
+ *   <li>epoch millis ↔ ISO 表示文字列の往復変換</li>
+ *   <li>不正入力の拒否（{@link Long#MIN_VALUE} または {@link IllegalArgumentException}）</li>
+ * </ul>
+ *
+ * <p>担保すること:
+ * <ul>
+ *   <li>ログパーサー・インデックス・UI フィルタが同一の millis 基準で時刻を比較できる</li>
+ *   <li>フロント表示用 ISO 形式（{@code yyyy-MM-ddTHH:mm:ss.SSS}）が一貫して生成される</li>
+ *   <li>うるう年等の civil calendar 変換が破綻しない</li>
+ * </ul>
+ */
 class TimeUtilTest {
 
+    /** ログ行タイムスタンプの parse → format 往復が一致すること。 */
     @Test
     void parseAndFormatRoundTrip() {
         byte[] b = "2026-06-15 00:19:11.705".getBytes(StandardCharsets.US_ASCII);
@@ -15,6 +35,14 @@ class TimeUtilTest {
         assertEquals("2026-06-15T00:19:11.705", TimeUtil.formatIso(millis));
     }
 
+    /** 非数字を含むタイムスタンプは {@link Long#MIN_VALUE} で失敗を表すこと。 */
+    @Test
+    void parseLogTimestampRejectsInvalid() {
+        byte[] bad = "2026-06-15 00:19:11.70X".getBytes(StandardCharsets.US_ASCII);
+        assertEquals(Long.MIN_VALUE, TimeUtil.parseLogTimestamp(bad, 0));
+    }
+
+    /** スペース区切り・T 区切り・日付のみが同一 millis に正規化されること。 */
     @Test
     void parseUiDatetimeVariants() {
         long a = TimeUtil.parseUiDatetime("2026-06-15 00:00:01.000");
@@ -24,15 +52,40 @@ class TimeUtilTest {
         assertEquals("2026-06-15T00:00:00.000", TimeUtil.formatIso(c));
     }
 
+    /** ミリ秒省略形式は 000 ミリ秒として解釈されること。 */
+    @Test
+    void parseUiDatetimeWithoutMillis() {
+        long millis = TimeUtil.parseUiDatetime("2026-06-15 12:30:45");
+        assertEquals("2026-06-15T12:30:45.000", TimeUtil.formatIso(millis));
+    }
+
+    /** 前後空白は trim され、同一日時として解釈されること。 */
+    @Test
+    void parseUiDatetimeTrimsInput() {
+        long a = TimeUtil.parseUiDatetime("  2026-06-15 00:00:01.000  ");
+        long b = TimeUtil.parseUiDatetime("2026-06-15 00:00:01.000");
+        assertEquals(a, b);
+    }
+
+    /** 解釈不能な文字列は {@link IllegalArgumentException} となること（API エラー応答の前提）。 */
     @Test
     void parseUiDatetimeRejectsInvalid() {
         assertThrows(IllegalArgumentException.class, () -> TimeUtil.parseUiDatetime("invalid"));
+        assertThrows(IllegalArgumentException.class, () -> TimeUtil.parseUiDatetime(""));
     }
 
+    /** millis 値が単調増加し、時系列ソート・範囲比較に使えること。 */
     @Test
     void ordersChronologically() {
         long early = TimeUtil.parseUiDatetime("2026-05-27 00:00:03.965");
         long late = TimeUtil.parseUiDatetime("2026-06-15 00:19:11.705");
-        org.junit.jupiter.api.Assertions.assertTrue(early < late);
+        assertTrue(early < late);
+    }
+
+    /** うるう日（2024-02-29）の toMillis → formatIso 往復が正しいこと。 */
+    @Test
+    void civilCalendarRoundTrip() {
+        long millis = TimeUtil.toMillis(2024, 2, 29, 23, 59, 59, 999);
+        assertEquals("2024-02-29T23:59:59.999", TimeUtil.formatIso(millis));
     }
 }
