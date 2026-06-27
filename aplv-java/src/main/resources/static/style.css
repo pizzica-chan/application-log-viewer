@@ -382,7 +382,7 @@ dialog pre {
   color: var(--text);
 }
 
-#detail-search-around {
+.detail-search-around-btn {
   background: var(--accent);
   color: #fff;
 }
