@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -508,14 +509,25 @@ public final class LogServer {
         payload.addProperty("offset", offset);
         payload.addProperty("limit", limit);
         JsonArray items = new JsonArray();
-        for (LogIndex.EntryRow e : result.page) {
-            items.add(rowJson(e));
+        Map<String, RandomAccessFile> rawHandles = new HashMap<>();
+        try {
+            for (LogIndex.EntryRow e : result.page) {
+                items.add(rowJson(e, readPageRaw(rawHandles, e)));
+            }
+        } finally {
+            for (RandomAccessFile f : rawHandles.values()) {
+                try {
+                    f.close();
+                } catch (IOException ignored) {
+                    // クローズ失敗は無視
+                }
+            }
         }
         payload.add("items", items);
         sendJson(ex, 200, payload);
     }
 
-    private JsonObject rowJson(LogIndex.EntryRow e) {
+    private JsonObject rowJson(LogIndex.EntryRow e, String raw) {
         JsonObject o = new JsonObject();
         o.addProperty("timestamp", TimeUtil.formatIso(e.tsMillis));
         o.addProperty("level", e.level);
@@ -524,7 +536,29 @@ public final class LogServer {
         o.addProperty("message", e.message);
         o.addProperty("source", e.source);
         o.addProperty("line_no", e.lineNo);
+        o.addProperty("raw", raw);
         return o;
+    }
+
+    /** 一覧表示用。ページ内の各行についてスタックトレース含む生テキストを読み出す。 */
+    private static String readPageRaw(Map<String, RandomAccessFile> handles, LogIndex.EntryRow e) {
+        try {
+            RandomAccessFile file = handles.get(e.source);
+            if (file == null) {
+                file = new RandomAccessFile(e.source, "r");
+                handles.put(e.source, file);
+            }
+            file.seek(e.byteOffset);
+            long size = e.endByteOffset > e.byteOffset ? e.endByteOffset - e.byteOffset : 0;
+            if (size <= 0) {
+                return "";
+            }
+            byte[] buf = new byte[(int) Math.min(size, Integer.MAX_VALUE)];
+            file.readFully(buf);
+            return new String(buf, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            return "";
+        }
     }
 
     // ---- API: logs/detail -------------------------------------------------

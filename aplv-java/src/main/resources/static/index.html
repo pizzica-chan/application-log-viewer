@@ -93,7 +93,13 @@
   </section>
 
   <section class="toolbar">
-    <span id="result-count"></span>
+    <div class="toolbar-left">
+      <span id="result-count"></span>
+      <label class="highlight-input">
+        マッチ行をハイライト
+        <input id="highlight" placeholder="含む文字列（表示のみ）">
+      </label>
+    </div>
     <div class="pager">
       <button id="prev" disabled>前へ</button>
       <span id="page-info"></span>
@@ -142,6 +148,7 @@
       <div class="detail-actions">
         <button type="button" id="detail-search-around-1m" class="detail-search-around-btn">前後1分間のログを検索</button>
         <button type="button" id="detail-search-around-5m" class="detail-search-around-btn">前後5分間のログを検索</button>
+        <button type="button" id="detail-filter-same-context" class="detail-search-around-btn">同一ソース・同一スレッドで絞込み</button>
         <button type="submit">閉じる</button>
       </div>
     </form>
@@ -167,6 +174,11 @@
             <td><code>Exception</code></td>
             <td>文字列を含む（部分一致）</td>
             <td>NullPointerException</td>
+          </tr>
+          <tr>
+            <td><code>^(?!.*Exception).*$</code></td>
+            <td>指定文字列を含まない（否定先読み。Exception は対象文字列に読み替え）</td>
+            <td>connection established</td>
           </tr>
           <tr>
             <td><code>error|warn</code></td>

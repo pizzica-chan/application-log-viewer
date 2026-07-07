@@ -1,0 +1,20 @@
+# EditorConfig: https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+# Windows PowerShell 5.1 は UTF-8 BOM 必須（BOM なし UTF-8 は cp932 誤読 → 文字化け・構文エラー）
+[*.{ps1,psm1}]
+charset = utf-8-bom
+end_of_line = crlf
+
+[*.bat]
+charset = utf-8
+end_of_line = crlf
+
+[*.cmd]
+charset = utf-8
+end_of_line = crlf

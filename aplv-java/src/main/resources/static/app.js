@@ -35,6 +35,7 @@ const els = {
   reset: document.getElementById("reset"),
   rows: document.getElementById("rows"),
   resultCount: document.getElementById("result-count"),
+  highlight: document.getElementById("highlight"),
   pageInfo: document.getElementById("page-info"),
   prev: document.getElementById("prev"),
   next: document.getElementById("next"),
@@ -42,6 +43,7 @@ const els = {
   detailBody: document.getElementById("detail-body"),
   detailSearchAround1m: document.getElementById("detail-search-around-1m"),
   detailSearchAround5m: document.getElementById("detail-search-around-5m"),
+  detailFilterSameContext: document.getElementById("detail-filter-same-context"),
   regexSamples: document.getElementById("regex-samples"),
   regexSamplesDialog: document.getElementById("regex-samples-dialog"),
   browseDialog: document.getElementById("browse-dialog"),
@@ -209,6 +211,12 @@ let exactQueryRange = null;
 
 /** 詳細ダイアログ表示中のログ時刻（ISO）。 */
 let detailTimestamp = null;
+/** 詳細ダイアログ表示中の Source / スレッド。 */
+let detailContext = null;
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function clearExactQueryRange() {
   exactQueryRange = null;
@@ -310,6 +318,39 @@ function buildQuery() {
 }
 
 let loadPollTimer = null;
+let lastPageItems = [];
+
+function getHighlightNeedle() {
+  const text = els.highlight.value.trim();
+  return text ? text.toLowerCase() : "";
+}
+
+/** ハイライト判定。grep と同様にスタックトレース含む raw を優先する（検索結果は変えない）。 */
+function rowMatchesHighlight(item, needle) {
+  if (!needle) return false;
+  const haystack = item.raw || [
+    item.timestamp,
+    item.level,
+    item.logger,
+    item.thread,
+    item.message,
+    item.source,
+    item.line_no,
+  ].filter((v) => v != null && v !== "").join(" ");
+  return haystack.toLowerCase().includes(needle);
+}
+
+function applyRowHighlights() {
+  const needle = getHighlightNeedle();
+  const rows = els.rows.querySelectorAll("tr");
+  for (let i = 0; i < rows.length; i += 1) {
+    const item = lastPageItems[i];
+    rows[i].classList.toggle(
+      "row-highlight",
+      Boolean(item && rowMatchesHighlight(item, needle))
+    );
+  }
+}
 
 function setLoadingUi(loading) {
   els.search.disabled = loading;
@@ -515,6 +556,7 @@ async function loadLogs() {
       els.resultCount.textContent = message;
       els.pageInfo.textContent = "-";
       els.rows.innerHTML = "";
+      lastPageItems = [];
       els.prev.disabled = true;
       els.next.disabled = true;
       setBackgroundLoading(true, message);
@@ -537,6 +579,7 @@ async function loadLogs() {
     els.next.disabled = offset + pageLimit >= data.total;
 
     els.rows.innerHTML = "";
+    lastPageItems = data.items;
     for (const item of data.items) {
       const tr = document.createElement("tr");
 
@@ -578,6 +621,7 @@ async function loadLogs() {
             "Thread: " + detail.thread + "\n\n" +
             detail.raw;
           detailTimestamp = detail.timestamp;
+          detailContext = { source: detail.source || "", thread: detail.thread || "" };
           els.detail.showModal();
         } finally {
           popLoading();
@@ -585,6 +629,7 @@ async function loadLogs() {
       });
       els.rows.appendChild(tr);
     }
+    applyRowHighlights();
   } finally {
     popLoading();
   }
@@ -647,12 +692,24 @@ function searchAroundFromDetail(minutes) {
   }
 }
 
+function filterBySameSourceAndThreadFromDetail() {
+  if (!detailContext || !detailContext.source || !detailContext.thread) return;
+  els.source.value = escapeRegex(detailContext.source);
+  els.thread.value = escapeRegex(detailContext.thread);
+  offset = 0;
+  els.detail.close();
+  loadLogs();
+}
+
 els.detailSearchAround1m.addEventListener("click", () => searchAroundFromDetail(1));
 els.detailSearchAround5m.addEventListener("click", () => searchAroundFromDetail(5));
+els.detailFilterSameContext.addEventListener("click", () => filterBySameSourceAndThreadFromDetail());
 
 els.regexSamples.addEventListener("click", () => {
   els.regexSamplesDialog.showModal();
 });
+
+els.highlight.addEventListener("input", applyRowHighlights);
 
 els.prev.addEventListener("click", () => {
   offset = Math.max(0, offset - getPageLimit());
@@ -670,6 +727,10 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.tagName === "INPUT") {
     if (e.target === els.logDir) {
       loadDirectory();
+      return;
+    }
+    if (e.target === els.highlight) {
+      applyRowHighlights();
       return;
     }
     if (

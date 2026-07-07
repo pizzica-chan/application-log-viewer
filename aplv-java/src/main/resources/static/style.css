@@ -247,6 +247,27 @@ button {
   gap: 1rem;
 }
 
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.highlight-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.highlight-input input {
+  width: 12rem;
+  min-width: 0;
+}
+
 .pager {
   display: flex;
   align-items: center;
@@ -333,6 +354,14 @@ tbody tr {
 
 tbody tr:hover {
   background: rgba(88, 166, 255, 0.08);
+}
+
+tbody tr.row-highlight {
+  background: rgba(210, 153, 34, 0.16);
+}
+
+tbody tr.row-highlight:hover {
+  background: rgba(210, 153, 34, 0.26);
 }
 
 .level-error { color: var(--err); font-weight: 600; }

@@ -1,0 +1,11 @@
+---
+description: Windows PowerShell スクリプトの文字コードと日本語メッセージの書き方
+globs: **/*.{ps1,psm1}
+alwaysApply: false
+---
+
+# PowerShell 文字化け対策（Windows / PS 5.1）
+
+- `.ps1` / `.psm1` は **UTF-8 BOM** で保存（`.editorconfig` 参照）
+- 日本語メッセージに `-SwitchName` を含む場合は **単一引用符**を使う
+- 検証: `scripts/verify-ps1-encoding.ps1`

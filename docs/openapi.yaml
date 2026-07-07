@@ -1,0 +1,541 @@
+openapi: 3.0.3
+info:
+  title: Application Log Viewer API
+  description: |
+    Java アプリケーションログを Web UI で閲覧・検索する障害調査用ツールの REST API。
+
+    指定ディレクトリ配下のログファイルを再帰的に探索し、SQLite インデックスを構築したうえで
+    フィルタ付き一覧・詳細（スタックトレース含む生ログ）を提供する。
+
+    **注意:** ローカル検証専用。認証は実装されていないため、インターネットに公開しないこと。
+  version: 1.0.0
+  contact:
+    name: Application Log Viewer
+  license:
+    name: MIT
+
+servers:
+  - url: http://127.0.0.1:8766
+    description: ローカル開発（デフォルト）
+  - url: http://localhost:8766
+    description: Docker / ローカル
+
+tags:
+  - name: meta
+    description: 読み込み状態・メタ情報
+  - name: browse
+    description: ディレクトリブラウザ
+  - name: load
+    description: ログ読み込み・インデックス構築
+  - name: logs
+    description: ログ検索・詳細
+
+paths:
+  /api/meta:
+    get:
+      tags: [meta]
+      summary: 読み込み状態を取得
+      description: |
+        現在のログディレクトリ、読み込み対象ファイル、インデックス構築の進捗、
+        エントリ件数、タイムスタンプ範囲、パース失敗行のサンプルなどを返す。
+      operationId: getMeta
+      responses:
+        '200':
+          description: メタ情報
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetaResponse'
+              examples:
+                ready:
+                  summary: 読み込み完了
+                  value:
+                    directory: D:/logs/app
+                    files:
+                      - D:/logs/app/application.log
+                      - D:/logs/app/application.log.2026-06-28
+                    loading: false
+                    load_status: ready
+                    load_progress: 12345
+                    total: 12345
+                    first: '2026-06-28T00:00:00.123'
+                    last: '2026-06-29T23:59:59.999'
+                loading:
+                  summary: 読み込み中
+                  value:
+                    directory: D:/logs/app
+                    files:
+                      - D:/logs/app/application.log
+                    loading: true
+                    load_status: loading
+                    load_progress: 5000
+                    total: 5000
+                    first: null
+                    last: null
+
+  /api/browse:
+    get:
+      tags: [browse]
+      summary: ディレクトリ一覧を取得
+      description: |
+        ログディレクトリ選択 UI 向けに、指定パス直下のサブディレクトリ一覧を返す。
+        `path` を省略した場合は、現在のログルート（未設定時はカレントディレクトリ）を起点とする。
+        ドット（`.`）で始まるディレクトリは除外される。
+      operationId: browseDirectories
+      parameters:
+        - name: path
+          in: query
+          description: 探索開始パス（絶対パスまたは相対パス）
+          required: false
+          schema:
+            type: string
+          example: D:/logs
+      responses:
+        '200':
+          description: ディレクトリ一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrowseResponse'
+        '400':
+          description: ディレクトリ不存在または読み取りエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/load:
+    post:
+      tags: [load]
+      summary: ログディレクトリを読み込み開始
+      description: |
+        指定ディレクトリ配下のログファイルを再帰的に探索し、SQLite インデックス構築を非同期で開始する。
+        レスポンスは `/api/meta` と同じ形式で、開始直後の状態を返す。
+        既に読み込み中の場合は新しい世代として再開始し、古いワーカーの結果は破棄される。
+      operationId: loadDirectory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoadRequest'
+            example:
+              directory: D:/logs/app
+      responses:
+        '200':
+          description: 読み込み開始後のメタ情報
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetaResponse'
+        '400':
+          description: リクエスト不正（JSON 解析失敗、directory 未指定、ディレクトリ不存在、ログ探索失敗）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 内部エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/logs:
+    get:
+      tags: [logs]
+      summary: フィルタ付きログ一覧を取得
+      description: |
+        インデックス済みログをフィルタ条件で絞り込み、ページング付きで返す。
+
+        - レベル・日時は SQL で事前絞り込み
+        - logger / thread / message / source / grep は Java 側で正規表現マッチ（大文字小文字無視）
+        - `grep` 指定時はスタックトレースを含む生ログ全文を照合
+
+        インデックス構築中（`load_status == loading`）は `loading: true` と空の `items` を返す。
+      operationId: queryLogs
+      parameters:
+        - name: level
+          in: query
+          description: ログレベル（カンマ区切り、大文字小文字無視）。例 `ERROR`, `WARN,ERROR`
+          required: false
+          schema:
+            type: string
+          example: WARN,ERROR
+        - name: logger
+          in: query
+          description: ロガー名の正規表現（大文字小文字無視）
+          required: false
+          schema:
+            type: string
+        - name: thread
+          in: query
+          description: スレッド名の正規表現（大文字小文字無視）
+          required: false
+          schema:
+            type: string
+        - name: message
+          in: query
+          description: 1 行目メッセージの正規表現（大文字小文字無視）
+          required: false
+          schema:
+            type: string
+        - name: grep
+          in: query
+          description: エントリ全体（スタックトレース含む）の正規表現（大文字小文字無視）
+          required: false
+          schema:
+            type: string
+        - name: source
+          in: query
+          description: ソースファイル名の正規表現（大文字小文字無視）
+          required: false
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: |
+            開始日時（この時刻以降）。
+            対応形式: `yyyy-MM-ddTHH:mm:ss.SSS` / `yyyy-MM-dd HH:mm:ss.SSS` / `HH:mm:ss` 付き / `yyyy-MM-dd`
+          required: false
+          schema:
+            type: string
+          example: '2026-06-28T00:00:00.000'
+        - name: until
+          in: query
+          description: 終了日時（この時刻以前）。形式は `since` と同じ
+          required: false
+          schema:
+            type: string
+          example: '2026-06-29T23:59:59.999'
+        - name: limit
+          in: query
+          description: 取得件数（デフォルト 500、最大 5000）
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 5000
+            default: 500
+        - name: offset
+          in: query
+          description: スキップ件数（デフォルト 0）
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: ログ一覧（読み込み中の場合も 200）
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/LogsResponse'
+                  - $ref: '#/components/schemas/LogsLoadingResponse'
+        '400':
+          description: 正規表現不正、日時形式不正、limit/offset 非整数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 読み込み失敗（`load_status == error`）または内部エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/logs/detail:
+    get:
+      tags: [logs]
+      summary: ログ詳細（生ログ全文）を取得
+      description: |
+        指定ソースファイル・行番号のエントリについて、スタックトレースを含む生ログ全文を返す。
+        同一行番号に複数エントリがある場合は `timestamp` で区別する。
+
+        インデックス構築中は `loading: true` のみを返す。
+      operationId: getLogDetail
+      parameters:
+        - name: source
+          in: query
+          description: ソースファイルパス
+          required: true
+          schema:
+            type: string
+          example: D:/logs/app/application.log
+        - name: line_no
+          in: query
+          description: 行番号（1 始まり）
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 42
+        - name: timestamp
+          in: query
+          description: ISO タイムスタンプ（同一行番号の複数エントリを区別する場合に指定）
+          required: false
+          schema:
+            type: string
+          example: '2026-06-29T10:15:30.123'
+      responses:
+        '200':
+          description: ログ詳細（読み込み中の場合も 200）
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/LogDetailResponse'
+                  - $ref: '#/components/schemas/DetailLoadingResponse'
+        '400':
+          description: source 未指定、line_no 非整数、timestamp 不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 該当行が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 読み込み失敗または I/O エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    LoadStatus:
+      type: string
+      enum: [idle, loading, ready, error]
+      description: |
+        インデックス構築状態
+        - `idle` — 未開始
+        - `loading` — 構築中
+        - `ready` — 完了
+        - `error` — 失敗
+
+    SkippedLineSample:
+      type: object
+      required: [source, line_no, preview]
+      properties:
+        source:
+          type: string
+          description: ソースファイルパス
+        line_no:
+          type: integer
+          format: int64
+          description: 行番号
+        preview:
+          type: string
+          description: 行内容のプレビュー
+
+    MetaResponse:
+      type: object
+      required:
+        - files
+        - loading
+        - load_status
+        - load_progress
+        - total
+      properties:
+        directory:
+          type: string
+          nullable: true
+          description: 現在のログルートディレクトリ（未設定時は null）
+        files:
+          type: array
+          description: 読み込み対象ログファイルのパス一覧
+          items:
+            type: string
+        loading:
+          type: boolean
+          description: インデックス構築中かどうか（`load_status == loading` と同等）
+        load_status:
+          $ref: '#/components/schemas/LoadStatus'
+        load_progress:
+          type: integer
+          format: int64
+          description: 構築進捗（処理済みエントリ数の目安）
+        total:
+          type: integer
+          format: int64
+          description: インデックス済みエントリ総数（loading 中は進捗値）
+        first:
+          type: string
+          nullable: true
+          description: 最古タイムスタンプ（`yyyy-MM-ddTHH:mm:ss.SSS`、ready 時のみ）
+        last:
+          type: string
+          nullable: true
+          description: 最新タイムスタンプ（`yyyy-MM-ddTHH:mm:ss.SSS`、ready 時のみ）
+        skipped_lines:
+          type: integer
+          description: パースに失敗した行数（ready かつ 1 件以上のときのみ）
+        skipped_samples:
+          type: array
+          description: パース失敗行のサンプル（ready かつ skipped_lines > 0 のときのみ）
+          items:
+            $ref: '#/components/schemas/SkippedLineSample'
+        load_error:
+          type: string
+          description: 読み込みエラーメッセージ（`load_status == error` のとき）
+
+    BrowseResponse:
+      type: object
+      required: [current, directories]
+      properties:
+        current:
+          type: string
+          description: 現在のディレクトリパス
+        parent:
+          type: string
+          nullable: true
+          description: 親ディレクトリパス（ルートの場合は null）
+        directories:
+          type: array
+          description: サブディレクトリのパス一覧（ソート済み）
+          items:
+            type: string
+
+    LoadRequest:
+      type: object
+      required: [directory]
+      properties:
+        directory:
+          type: string
+          description: 読み込むログディレクトリのパス
+
+    LogEntry:
+      type: object
+      required: [timestamp, level, logger, thread, message, source, line_no, raw]
+      properties:
+        timestamp:
+          type: string
+          description: タイムスタンプ（`yyyy-MM-ddTHH:mm:ss.SSS`）
+          example: '2026-06-29T10:15:30.123'
+        level:
+          type: string
+          description: ログレベル
+          example: ERROR
+        logger:
+          type: string
+          description: ロガー名
+          example: com.example.service.UserService
+        thread:
+          type: string
+          description: スレッド名
+          example: http-nio-8080-exec-1
+        message:
+          type: string
+          description: 1 行目メッセージ
+          example: Failed to process request
+        source:
+          type: string
+          description: ソースファイルパス
+          example: D:/logs/app/application.log
+        line_no:
+          type: integer
+          format: int64
+          description: 行番号（1 始まり）
+        raw:
+          type: string
+          description: スタックトレース含む生ログ全文（ハイライト・grep 判定用）
+
+    LogsResponse:
+      type: object
+      required: [total, offset, limit, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+          description: フィルタ条件に一致する総件数
+        offset:
+          type: integer
+          format: int64
+          description: スキップ件数
+        limit:
+          type: integer
+          format: int64
+          description: 取得件数上限
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogEntry'
+
+    LogsLoadingResponse:
+      type: object
+      required: [loading, load_progress, total, offset, limit, items]
+      properties:
+        loading:
+          type: boolean
+          enum: [true]
+        load_progress:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+          enum: [0]
+        offset:
+          type: integer
+          format: int64
+          enum: [0]
+        limit:
+          type: integer
+          format: int64
+          enum: [0]
+        items:
+          type: array
+          maxItems: 0
+          items: {}
+
+    LogDetailResponse:
+      type: object
+      required: [source, line_no, timestamp, level, logger, thread, raw]
+      properties:
+        source:
+          type: string
+          description: ソースファイルパス
+        line_no:
+          type: integer
+          format: int64
+          description: 行番号
+        timestamp:
+          type: string
+          description: タイムスタンプ（`yyyy-MM-ddTHH:mm:ss.SSS`）
+        level:
+          type: string
+        logger:
+          type: string
+        thread:
+          type: string
+        raw:
+          type: string
+          description: スタックトレースを含む生ログ全文
+
+    DetailLoadingResponse:
+      type: object
+      required: [loading, load_progress]
+      properties:
+        loading:
+          type: boolean
+          enum: [true]
+        load_progress:
+          type: integer
+          format: int64
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: エラーメッセージ
