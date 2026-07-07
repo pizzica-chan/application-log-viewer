@@ -536,6 +536,13 @@ async function refreshBrowseList() {
   }
 }
 
+function displayLoggerName(logger) {
+  if (logger == null || logger === "") return logger;
+  const s = String(logger);
+  const dot = s.lastIndexOf(".");
+  return dot >= 0 ? s.slice(dot + 1) : s;
+}
+
 function addCell(tr, content, options = {}) {
   const td = document.createElement("td");
   const text = content == null || content === "" ? "-" : String(content);
@@ -585,7 +592,10 @@ async function loadLogs() {
 
       addCell(tr, item.timestamp);
       addCell(tr, item.level, { className: levelClass(item.level) });
-      addCell(tr, item.logger, { className: "logger", title: item.logger });
+      addCell(tr, displayLoggerName(item.logger), {
+        className: "logger",
+        title: item.logger,
+      });
       addCell(tr, item.thread, { title: item.thread });
       addCell(tr, item.message, { className: "message", title: item.message });
       addCell(tr, item.source + ":" + item.line_no, {
