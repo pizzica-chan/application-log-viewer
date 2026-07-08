@@ -199,4 +199,34 @@ class LogParserTest {
         assertEquals("WorkerA", p.thread);
         assertEquals("MyLogger", p.logger);
     }
+
+    /** IP アドレスを含む AJP スレッド名を logger と誤認しないこと。 */
+    @Test
+    void ajpThreadWithIpAddressIsNotLogger() {
+        LogParser.ParsedLine p = LogParser.parseLine(
+                "2026-06-15 00:19:11.705[ajp-nio-127.0.0.1-8009-exec-1][DEBUG][com.example.web.HogeController] - body");
+        assertNotNull(p);
+        assertEquals("ajp-nio-127.0.0.1-8009-exec-1", p.thread);
+        assertEquals("com.example.web.HogeController", p.logger);
+    }
+
+    /** IP アドレス付きスレッド名が第3フィールドにある旧形式でも正しく判別すること。 */
+    @Test
+    void ajpThreadWithIpAddressInThirdField() {
+        LogParser.ParsedLine p = LogParser.parseLine(
+                "2026-06-15 00:19:11.705[com.example.web.HogeController][DEBUG][ajp-nio-127.0.0.1-8009-exec-1] - body");
+        assertNotNull(p);
+        assertEquals("com.example.web.HogeController", p.logger);
+        assertEquals("ajp-nio-127.0.0.1-8009-exec-1", p.thread);
+    }
+
+    /** IP 付きスレッド + 短い logger 名でも Tomcat 形式として正しく判別すること。 */
+    @Test
+    void ajpThreadWithIpAddressAndShortLoggerName() {
+        LogParser.ParsedLine p = LogParser.parseLine(
+                "2026-06-15 00:19:11.705[ajp-nio-127.0.0.1-8009-exec-1][INFO][HogeController] - msg");
+        assertNotNull(p);
+        assertEquals("ajp-nio-127.0.0.1-8009-exec-1", p.thread);
+        assertEquals("HogeController", p.logger);
+    }
 }

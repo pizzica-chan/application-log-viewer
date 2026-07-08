@@ -35,7 +35,8 @@ public final class LogParser {
     private static final String FIELD3_END = "] - ";
 
     private static final Pattern THREAD_HINT = Pattern.compile(
-            "(?:^main(?:$|:)|exec-\\d+|pool-\\d+-thread-\\d+|scheduler-\\d+|ajp-|http-nio-|catalina-)",
+            "(?:^main(?:$|:)|exec-\\d+|pool-\\d+-thread-\\d+|scheduler-\\d+"
+                    + "|ajp-|http-nio-|https-nio-|catalina-|-exec-\\d+$)",
             Pattern.CASE_INSENSITIVE);
 
     /** 解析結果（エントリ先頭行）。 */
@@ -129,22 +130,26 @@ public final class LogParser {
         }
         String logger;
         String thread;
-        if (field3.indexOf('.') >= 0) {
+        boolean field1LooksLikeThread = THREAD_HINT.matcher(field1).find();
+        boolean field3LooksLikeThread = THREAD_HINT.matcher(field3).find();
+        if (field1LooksLikeThread != field3LooksLikeThread) {
+            if (field1LooksLikeThread) {
+                thread = field1;
+                logger = field3;
+            } else {
+                thread = field3;
+                logger = field1;
+            }
+        } else if (field3.indexOf('.') >= 0 && field1.indexOf('.') < 0) {
             // Tomcat: [Thread][LEVEL][Logger(FQCN)]
             logger = field3;
             thread = field1;
-        } else if (field1.indexOf('.') >= 0) {
+        } else if (field1.indexOf('.') >= 0 && field3.indexOf('.') < 0) {
             // 旧形式: [Logger(FQCN)][LEVEL][Thread]
             logger = field1;
             thread = field3;
-        } else if (THREAD_HINT.matcher(field1).find()) {
-            logger = field3;
-            thread = field1;
-        } else if (THREAD_HINT.matcher(field3).find()) {
-            logger = field1;
-            thread = field3;
         } else {
-            // 判別不能時は Tomcat 形式を優先
+            // 判別不能時は Tomcat 形式 [thread][LEVEL][logger] を優先
             logger = field3;
             thread = field1;
         }
