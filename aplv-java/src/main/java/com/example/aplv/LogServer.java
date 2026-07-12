@@ -579,7 +579,7 @@ public final class LogServer {
         Map<String, String> p = queryParams(ex);
         String source = p.getOrDefault("source", "");
         if (source.isEmpty()) {
-            sendErrorJson(ex, 400, "source を指定してください");
+            sendErrorJson(ex, 400, "ログファイルを指定してください");
             return;
         }
         long lineNo;

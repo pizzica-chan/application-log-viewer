@@ -81,8 +81,8 @@
       <input id="grep" placeholder="Exception">
     </label>
     <label>
-      ソースファイル (正規表現)
-      <input id="source" placeholder="C:\logs\app\application.log">
+      ログファイル (正規表現)
+      <input id="source" placeholder="application.log">
     </label>
     <label>
       表示件数
@@ -121,7 +121,7 @@
             <th>Logger</th>
             <th>Thread</th>
             <th>Message</th>
-            <th>Source</th>
+            <th>ログファイル</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -148,7 +148,7 @@
       <div class="detail-actions">
         <button type="button" id="detail-search-around-1m" class="detail-search-around-btn">前後1分間のログを検索</button>
         <button type="button" id="detail-search-around-5m" class="detail-search-around-btn">前後5分間のログを検索</button>
-        <button type="button" id="detail-filter-same-context" class="detail-search-around-btn">同一ソース・同一スレッドで絞込み</button>
+        <button type="button" id="detail-filter-same-context" class="detail-search-around-btn">同一ログファイル・同一スレッドで絞込み</button>
         <button type="submit">閉じる</button>
       </div>
     </form>
@@ -158,7 +158,7 @@
     <form method="dialog" class="regex-samples-form">
       <h2>正規表現サンプル</h2>
       <p class="regex-samples-note">
-        ロガー・スレッド・メッセージ・全文検索・ソースファイルの各フィールドは正規表現に対応しています。
+        ロガー・スレッド・メッセージ・全文検索・ログファイルの各フィールドは正規表現に対応しています。
         マッチは大文字小文字を区別しません。
       </p>
       <table class="regex-samples-table">
@@ -207,8 +207,8 @@
           </tr>
           <tr>
             <td><code>application\.log</code></td>
-            <td>ファイル名の部分一致</td>
-            <td>C:\logs\application.log</td>
+            <td>ログファイルパス</td>
+            <td>logs\application.log</td>
           </tr>
           <tr>
             <td><code>ajp-nio-8009</code></td>

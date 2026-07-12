@@ -764,7 +764,7 @@ public final class LogIndex {
         return e;
     }
 
-    /** ソースパス・行番号で 1 件検索（timestamp 指定時は行の特定を補助）。 */
+    /** ログファイルパス・行番号で 1 件検索（timestamp 指定時は行の特定を補助）。 */
     public static EntryRow findEntry(Connection conn, String source, long lineNo, String timestampIso)
             throws SQLException {
         if (timestampIso != null && !timestampIso.isEmpty()) {
@@ -782,7 +782,7 @@ public final class LogIndex {
         return findEntry(conn, source, lineNo);
     }
 
-    /** ソースパス・行番号で 1 件検索。 */
+    /** ログファイルパス・行番号で 1 件検索。 */
     public static EntryRow findEntry(Connection conn, String source, long lineNo) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
                 SELECT_BASE + "WHERE f.path = ? AND e.line_no = ? LIMIT 1")) {

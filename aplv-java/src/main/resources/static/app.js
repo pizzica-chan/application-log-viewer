@@ -211,7 +211,7 @@ let exactQueryRange = null;
 
 /** 詳細ダイアログ表示中のログ時刻（ISO）。 */
 let detailTimestamp = null;
-/** 詳細ダイアログ表示中の Source / スレッド。 */
+/** 詳細ダイアログ表示中のログファイル / スレッド。 */
 let detailContext = null;
 
 function escapeRegex(s) {
@@ -543,6 +543,14 @@ function displayLoggerName(logger) {
   return dot >= 0 ? s.slice(dot + 1) : s;
 }
 
+function formatSourceLabel(source) {
+  if (!source) return "-";
+  const parts = source.split(/[/\\]/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] || source;
+  const sep = source.includes("\\") ? "\\" : "/";
+  return parts.slice(-2).join(sep);
+}
+
 function addCell(tr, content, options = {}) {
   const td = document.createElement("td");
   const text = content == null || content === "" ? "-" : String(content);
@@ -598,9 +606,9 @@ async function loadLogs() {
       });
       addCell(tr, item.thread, { title: item.thread });
       addCell(tr, item.message, { className: "message", title: item.message });
-      addCell(tr, item.source + ":" + item.line_no, {
+      addCell(tr, formatSourceLabel(item.source) + ":" + item.line_no, {
         className: "source",
-        title: item.source,
+        title: item.source + ":" + item.line_no,
       });
 
       tr.addEventListener("click", async () => {
@@ -623,7 +631,7 @@ async function loadLogs() {
             return;
           }
           els.detailBody.textContent =
-            "ファイル: " + detail.source + "\n" +
+            "ログファイル: " + detail.source + "\n" +
             "行番号: " + detail.line_no + "\n" +
             "時刻: " + detail.timestamp + "\n" +
             "Level: " + detail.level + "\n" +

@@ -188,7 +188,7 @@ paths:
             type: string
         - name: source
           in: query
-          description: ソースファイル名の正規表現（大文字小文字無視）
+          description: ログファイル名の正規表現（大文字小文字無視）
           required: false
           schema:
             type: string
@@ -254,7 +254,7 @@ paths:
       tags: [logs]
       summary: ログ詳細（生ログ全文）を取得
       description: |
-        指定ソースファイル・行番号のエントリについて、スタックトレースを含む生ログ全文を返す。
+        指定ログファイル・行番号のエントリについて、スタックトレースを含む生ログ全文を返す。
         同一行番号に複数エントリがある場合は `timestamp` で区別する。
 
         インデックス構築中は `loading: true` のみを返す。
@@ -262,7 +262,7 @@ paths:
       parameters:
         - name: source
           in: query
-          description: ソースファイルパス
+          description: ログファイルパス
           required: true
           schema:
             type: string
@@ -328,7 +328,7 @@ components:
       properties:
         source:
           type: string
-          description: ソースファイルパス
+          description: ログファイルパス
         line_no:
           type: integer
           format: int64
@@ -439,7 +439,7 @@ components:
           example: Failed to process request
         source:
           type: string
-          description: ソースファイルパス
+          description: ログファイルパス
           example: D:/logs/app/application.log
         line_no:
           type: integer
@@ -503,7 +503,7 @@ components:
       properties:
         source:
           type: string
-          description: ソースファイルパス
+          description: ログファイルパス
         line_no:
           type: integer
           format: int64
