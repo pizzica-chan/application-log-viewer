@@ -50,6 +50,14 @@ public final class LogServer {
 
     private static final int MAX_LIMIT = 5000;
     private static final int DEFAULT_LIMIT = 500;
+    /**
+     * 一覧 1 行あたりに返す生テキストの上限（文字）。
+     *
+     * <p>一覧の {@code raw} はクライアント側のハイライト判定にしか使わないため全文は要らない。
+     * 上限を設けないと、長大なスタックトレース × 表示件数（最大 {@link #MAX_LIMIT}）で
+     * レスポンスが数百 MB になり得る。切り詰めてもハイライトは残りの列にフォールバックする。
+     */
+    private static final int MAX_ROW_RAW_CHARS = 4096;
 
     private volatile Path logRoot;
     private volatile List<Path> logPaths = Collections.emptyList();
@@ -212,6 +220,8 @@ public final class LogServer {
                         total = built.entryCount;
                     } else {
                         total = LogIndex.entryCount(newConn);
+                        // 旧バージョンが作った索引には統計が無く、レベル絞り込みが遅くなる。
+                        LogIndex.ensureStatistics(newConn);
                         loadProgress.set(total);
                     }
                 }
@@ -512,19 +522,27 @@ public final class LogServer {
         Map<String, RandomAccessFile> rawHandles = new HashMap<>();
         try {
             for (LogIndex.EntryRow e : result.page) {
-                items.add(rowJson(e, readPageRaw(rawHandles, e)));
+                // grep 検索では LogQuery が既に読み出しているので再読み込みしない。
+                String raw = e.raw != null ? e.raw : LogIndex.readEntryRawCached(rawHandles, e);
+                items.add(rowJson(e, truncateRaw(raw)));
             }
         } finally {
-            for (RandomAccessFile f : rawHandles.values()) {
-                try {
-                    f.close();
-                } catch (IOException ignored) {
-                    // クローズ失敗は無視
-                }
-            }
+            LogIndex.closeHandles(rawHandles);
         }
         payload.add("items", items);
         sendJson(ex, 200, payload);
+    }
+
+    /** 一覧の生テキストを上限まで切り詰める（サロゲートペアの分断は避ける）。 */
+    private static String truncateRaw(String raw) {
+        if (raw == null || raw.length() <= MAX_ROW_RAW_CHARS) {
+            return raw;
+        }
+        int end = MAX_ROW_RAW_CHARS;
+        if (Character.isHighSurrogate(raw.charAt(end - 1))) {
+            end--;
+        }
+        return raw.substring(0, end);
     }
 
     private JsonObject rowJson(LogIndex.EntryRow e, String raw) {
@@ -538,27 +556,6 @@ public final class LogServer {
         o.addProperty("line_no", e.lineNo);
         o.addProperty("raw", raw);
         return o;
-    }
-
-    /** 一覧表示用。ページ内の各行についてスタックトレース含む生テキストを読み出す。 */
-    private static String readPageRaw(Map<String, RandomAccessFile> handles, LogIndex.EntryRow e) {
-        try {
-            RandomAccessFile file = handles.get(e.source);
-            if (file == null) {
-                file = new RandomAccessFile(e.source, "r");
-                handles.put(e.source, file);
-            }
-            file.seek(e.byteOffset);
-            long size = e.endByteOffset > e.byteOffset ? e.endByteOffset - e.byteOffset : 0;
-            if (size <= 0) {
-                return "";
-            }
-            byte[] buf = new byte[(int) Math.min(size, Integer.MAX_VALUE)];
-            file.readFully(buf);
-            return new String(buf, StandardCharsets.UTF_8);
-        } catch (IOException ex) {
-            return "";
-        }
     }
 
     // ---- API: logs/detail -------------------------------------------------

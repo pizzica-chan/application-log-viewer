@@ -1,8 +1,6 @@
 package com.example.aplv;
 
-import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -20,6 +18,15 @@ import com.example.aplv.LogIndex.EntryRow;
  * <p>レベル・日時は SQL（インデックス利用）で絞り込み、正規表現系（logger / thread /
  * message / source）は DB 列だけで先に評価し、grep 指定時のみ通過行の
  * 生ログを byte 範囲から読み出す（不要なディスク I/O を省略）。
+ *
+ * <p>正規表現・grep がいずれも未指定なら Java 側で判定するものが無いため、件数と 1 ページ分を
+ * まるごと SQL（{@code COUNT(*)} と {@code LIMIT/OFFSET}）に任せ、全ヒットを {@link EntryRow}
+ * に起こして数え上げる処理を省く。日時のみで絞り込む場合は {@code idx_entries_ts} を
+ * 並び順どおりに辿れるため、ページ送りは表示件数に比例した時間で返る。
+ *
+ * <p>レベルで絞り込む場合は SQLite が {@code idx_entries_level} を選ぶため並べ直しが入り、
+ * ヒット件数に比例した時間がかかる（これは Java 側で数えていた頃も同じで、同じ ORDER BY を
+ * 投げている以上避けられない）。解消するには {@code entries(level, ts_millis, ...)} の索引が要る。
  */
 public final class LogQuery {
 
@@ -27,6 +34,9 @@ public final class LogQuery {
     private static final String REGEX_META = ".^$*+?()[]{}|\\";
     /** trigram は 3 文字以上でないと部分一致検索できない。 */
     private static final int FTS_MIN_LEN = 3;
+
+    /** 結果の並び順。{@code idx_entries_ts} と同じ並びなので索引を順に辿れる。 */
+    private static final String ORDER_BY = " ORDER BY e.ts_millis, e.file_id, e.line_no";
 
     private LogQuery() {
     }
@@ -62,26 +72,25 @@ public final class LogQuery {
 
     public static Result queryLogs(Connection conn, QueryFilter filter, long offset, long limit)
             throws SQLException {
-        StringBuilder sql = new StringBuilder(LogIndex.selectBase());
-        sql.append("WHERE 1=1");
+        StringBuilder where = new StringBuilder("WHERE 1=1");
         List<Object> params = new ArrayList<>();
 
         if (filter.levels != null && !filter.levels.isEmpty()) {
-            sql.append(" AND e.level IN (");
+            where.append(" AND e.level IN (");
             boolean first = true;
             for (String level : filter.levels) {
-                sql.append(first ? "?" : ", ?");
+                where.append(first ? "?" : ", ?");
                 params.add(level);
                 first = false;
             }
-            sql.append(")");
+            where.append(")");
         }
         if (filter.sinceMillis != null) {
-            sql.append(" AND e.ts_millis >= ?");
+            where.append(" AND e.ts_millis >= ?");
             params.add(filter.sinceMillis);
         }
         if (filter.untilMillis != null) {
-            sql.append(" AND e.ts_millis <= ?");
+            where.append(" AND e.ts_millis <= ?");
             params.add(filter.untilMillis);
         }
 
@@ -89,64 +98,114 @@ public final class LogQuery {
         // （最終判定は下の正規表現検証で確定するので結果は同一。）
         if (filter.grepRe != null && filter.grepText != null
                 && isPlainLiteral(filter.grepText) && LogIndex.ftsAvailable(conn)) {
-            sql.append(" AND e.id IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?)");
+            where.append(" AND e.id IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?)");
             params.add(ftsMatchExpr(filter.grepText));
         }
 
-        sql.append(" ORDER BY e.ts_millis, e.file_id, e.line_no");
+        String whereSql = where.toString();
+        if (!needsJavaFilter(filter)) {
+            return new Result(countMatches(conn, whereSql, params),
+                    fetchPage(conn, whereSql, params, offset, limit));
+        }
+        return scanAndFilter(conn, whereSql, params, filter, offset, limit);
+    }
 
+    /** SQL の絞り込みだけでは確定できず、行ごとの判定が要るか。 */
+    private static boolean needsJavaFilter(QueryFilter f) {
+        return f.loggerRe != null || f.threadRe != null || f.messageRe != null
+                || f.sourceRe != null || f.grepRe != null;
+    }
+
+    /**
+     * 条件に一致する件数。
+     *
+     * <p>WHERE 句は {@code e.}（entries）の列しか参照しないため files との JOIN を省ける。
+     * SQL 側へ押し下げる条件を増やすときは、この前提が崩れていないか確認すること。
+     */
+    private static long countMatches(Connection conn, String where, List<Object> params)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM entries e " + where)) {
+            bind(ps, params);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            }
+        }
+    }
+
+    /** 1 ページ分だけを SQL で取り出す。 */
+    private static List<EntryRow> fetchPage(Connection conn, String where, List<Object> params,
+            long offset, long limit) throws SQLException {
+        List<EntryRow> page = new ArrayList<>();
+        if (limit <= 0) {
+            return page;
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+                LogIndex.selectBase() + where + ORDER_BY + " LIMIT ? OFFSET ?")) {
+            int i = bind(ps, params);
+            ps.setLong(i++, limit);
+            ps.setLong(i, offset);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    page.add(LogIndex.rowFrom(rs));
+                }
+            }
+        }
+        return page;
+    }
+
+    /** 全ヒットを走査し、行ごとに正規表現・grep を評価しながら件数とページを組み立てる。 */
+    private static Result scanAndFilter(Connection conn, String where, List<Object> params,
+            QueryFilter filter, long offset, long limit) throws SQLException {
         boolean needsRaw = filter.needsRaw();
         Map<String, RandomAccessFile> handles = needsRaw ? new HashMap<>() : null;
 
         long total = 0;
         List<EntryRow> page = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            for (int i = 0; i < params.size(); i++) {
-                ps.setObject(i + 1, params.get(i));
-            }
+        try (PreparedStatement ps = conn.prepareStatement(
+                LogIndex.selectBase() + where + ORDER_BY)) {
+            bind(ps, params);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     EntryRow e = LogIndex.rowFrom(rs);
-                    if (!matchesIndexColumns(e, filter)) {
+                    if (!matchesRegexColumns(e, filter)) {
                         continue;
                     }
+                    String raw = null;
                     if (needsRaw) {
-                        String raw = readRawCached(handles, e);
-                        if (!matchesGrep(filter, raw)) {
+                        raw = LogIndex.readEntryRawCached(handles, e);
+                        if (!filter.grepRe.matcher(raw).find()) {
                             continue;
                         }
                     }
                     if (total >= offset && page.size() < limit) {
+                        // grep 判定で読んだ生テキストは一覧 API がそのまま使うので持たせる。
+                        e.raw = raw;
                         page.add(e);
                     }
                     total++;
                 }
             }
         } finally {
-            if (handles != null) {
-                for (RandomAccessFile f : handles.values()) {
-                    try {
-                        f.close();
-                    } catch (IOException ignored) {
-                        // クローズ失敗は無視
-                    }
-                }
-            }
+            LogIndex.closeHandles(handles);
         }
         return new Result(total, page);
     }
 
-    /** DB 列のみで判定（grep 前。ディスク読み不要）。 */
-    private static boolean matchesIndexColumns(EntryRow e, QueryFilter f) {
-        if (f.levels != null && !f.levels.contains(e.level.toUpperCase())) {
-            return false;
+    private static int bind(PreparedStatement ps, List<Object> params) throws SQLException {
+        int i = 1;
+        for (Object param : params) {
+            ps.setObject(i++, param);
         }
-        if (f.sinceMillis != null && e.tsMillis < f.sinceMillis) {
-            return false;
-        }
-        if (f.untilMillis != null && e.tsMillis > f.untilMillis) {
-            return false;
-        }
+        return i;
+    }
+
+    /**
+     * DB 列のみで判定（grep 前。ディスク読み不要）。
+     *
+     * <p>レベル・日時は SQL 側で絞り込み済みのため、ここでは正規表現だけを評価する。
+     */
+    private static boolean matchesRegexColumns(EntryRow e, QueryFilter f) {
         if (f.sourceRe != null && !f.sourceRe.matcher(e.source).find()) {
             return false;
         }
@@ -160,32 +219,5 @@ public final class LogQuery {
             return false;
         }
         return true;
-    }
-
-    private static boolean matchesGrep(QueryFilter f, String raw) {
-        if (f.grepRe == null) {
-            return true;
-        }
-        return f.grepRe.matcher(raw).find();
-    }
-
-    private static String readRawCached(Map<String, RandomAccessFile> handles, EntryRow e) {
-        try {
-            RandomAccessFile file = handles.get(e.source);
-            if (file == null) {
-                file = new RandomAccessFile(e.source, "r");
-                handles.put(e.source, file);
-            }
-            file.seek(e.byteOffset);
-            long size = e.endByteOffset > e.byteOffset ? e.endByteOffset - e.byteOffset : 0;
-            if (size <= 0) {
-                return "";
-            }
-            byte[] buf = new byte[(int) Math.min(size, Integer.MAX_VALUE)];
-            file.readFully(buf);
-            return new String(buf, StandardCharsets.UTF_8);
-        } catch (IOException ex) {
-            return "";
-        }
     }
 }

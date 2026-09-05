@@ -3,6 +3,7 @@ package com.example.aplv;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +16,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -77,6 +79,8 @@ public final class LogIndex {
         public String thread;
         public String message;
         public String source;
+        /** 生テキスト（スタックトレース含む）。grep 判定で既に読み出した場合のみ設定される。 */
+        public String raw;
     }
 
     /** インデックス保存ディレクトリ {@code {repo}/tmp/aplv}。 */
@@ -128,7 +132,40 @@ public final class LogIndex {
             st.execute("CREATE INDEX IF NOT EXISTS idx_entries_ts "
                     + "ON entries(ts_millis, file_id, line_no)");
             st.execute("CREATE INDEX IF NOT EXISTS idx_entries_level ON entries(level)");
+            // レベル絞り込み + 時系列ソートの組み合わせ用。これが無いと SQLite は
+            // idx_entries_level を選び、ヒット全件を並べ直してから LIMIT を適用する。
+            st.execute("CREATE INDEX IF NOT EXISTS idx_entries_level_ts "
+                    + "ON entries(level, ts_millis, file_id, line_no)");
         }
+    }
+
+    /**
+     * 索引の統計（{@code sqlite_stat1}）を更新する。
+     *
+     * <p>統計が無いと SQLite は列の選択度を知らず、レベル絞り込みで
+     * {@code idx_entries_level} を選んで並べ直してしまう。統計があれば
+     * {@code idx_entries_level_ts} を並び順どおりに辿れる。
+     * 最適化のための処理なので、失敗しても構築自体は成功扱いにする。
+     */
+    static void updateStatistics(Connection conn) {
+        try (Statement st = conn.createStatement()) {
+            st.execute("ANALYZE");
+        } catch (SQLException e) {
+            // 統計が無くても結果は正しい（遅くなるだけ）ので無視する
+        }
+    }
+
+    /** 統計が未作成なら作る。既存インデックスを再利用する経路で使う。 */
+    static void ensureStatistics(Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_stat1'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return;
+                }
+            }
+        }
+        updateStatistics(conn);
     }
 
     /**
@@ -485,6 +522,7 @@ public final class LogIndex {
             ps.executeUpdate();
         }
         saveSkippedMeta(conn, (int) skippedCounter.get(), skippedSamples);
+        updateStatistics(conn);
         conn.commit();
 
         if (progress != null) {
@@ -719,9 +757,52 @@ public final class LogIndex {
 
     // ---- 参照 -------------------------------------------------------------
 
+    /**
+     * エントリの生テキストを、ファイルごとに使い回すハンドルから読み出す。
+     *
+     * <p>1 ページ／1 クエリ内で同じログファイルを何度も開き直さないための共通処理。
+     * 読み取り失敗時は空文字を返す（1 件の欠落で一覧全体を落とさない）。
+     *
+     * @param handles ログファイルパス → オープン済みハンドル。呼び出し側が
+     *                {@link #closeHandles} で解放する
+     */
+    static String readEntryRawCached(Map<String, RandomAccessFile> handles, EntryRow e) {
+        try {
+            RandomAccessFile file = handles.get(e.source);
+            if (file == null) {
+                file = new RandomAccessFile(e.source, "r");
+                handles.put(e.source, file);
+            }
+            long size = e.endByteOffset > e.byteOffset ? e.endByteOffset - e.byteOffset : 0;
+            if (size <= 0) {
+                return "";
+            }
+            file.seek(e.byteOffset);
+            byte[] buf = new byte[(int) Math.min(size, Integer.MAX_VALUE)];
+            file.readFully(buf);
+            return new String(buf, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            return "";
+        }
+    }
+
+    /** {@link #readEntryRawCached} で開いたハンドルをまとめて閉じる（null 可）。 */
+    static void closeHandles(Map<String, RandomAccessFile> handles) {
+        if (handles == null) {
+            return;
+        }
+        for (RandomAccessFile f : handles.values()) {
+            try {
+                f.close();
+            } catch (IOException ignored) {
+                // クローズ失敗は無視
+            }
+        }
+    }
+
     /** エントリの生テキスト（スタックトレース含む）を byte 範囲から読み出す。 */
     public static String readEntryRaw(Path path, long start, long end) throws IOException {
-        try (java.io.RandomAccessFile file = new java.io.RandomAccessFile(path.toFile(), "r")) {
+        try (RandomAccessFile file = new RandomAccessFile(path.toFile(), "r")) {
             file.seek(start);
             if (end <= start) {
                 String line = file.readLine();

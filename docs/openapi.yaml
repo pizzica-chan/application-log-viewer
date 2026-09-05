@@ -447,7 +447,10 @@ components:
           description: 行番号（1 始まり）
         raw:
           type: string
-          description: スタックトレース含む生ログ全文（ハイライト・grep 判定用）
+          description: >-
+            スタックトレースを含む生ログ（クライアント側のハイライト判定用）。
+            レスポンス肥大を避けるため 4096 文字で切り詰められる。全文は
+            /api/logs/detail を参照。
 
     LogsResponse:
       type: object

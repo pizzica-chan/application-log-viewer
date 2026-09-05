@@ -3,14 +3,17 @@ package com.example.aplv;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -28,6 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>FTS5 有効/無効それぞれでの全文 grep（スタックトレース内文字列の検索）</li>
  *   <li>複数ファイルの並列インデックスと ts_millis 昇順マージ</li>
  *   <li>offset / limit によるページング</li>
+ *   <li>SQL 押し下げ経路と全件走査経路が同一結果を返すこと</li>
  * </ul>
  *
  * <p>担保すること:
@@ -36,6 +40,7 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>スタックトレース本文は DB に載せず byte 範囲からオンデマンド読み出しできる</li>
  *   <li>ログ追記後や FTS 設定変更時に stale インデックスを検知できる</li>
  *   <li>FTS 非対応環境でも grep が全件スキャンで同等の結果を返す</li>
+ *   <li>正規表現の有無でクエリ経路が変わっても件数・並び・ページ境界が変わらない</li>
  * </ul>
  */
 class LogIndexTest {
@@ -301,6 +306,106 @@ class LogIndexTest {
             assertFalse(LogIndex.getSkippedLineSamples(conn).isEmpty());
             assertFalse(LogIndex.needsRebuild(conn, Collections.singletonList(log), false));
             assertEquals(2, LogIndex.getSkippedLineCount(conn));
+        }
+    }
+
+    /** 5 行のログ。SQL 押し下げ経路と全件走査経路の比較に使う。 */
+    private Path writeFiveLines(Path dir) throws IOException {
+        return writeLog(dir, "app.log",
+                "2026-06-15 00:00:01.000[main][INFO][com.example.A] - one\n"
+                        + "2026-06-15 00:00:02.000[main][ERROR][com.example.A] - two\n"
+                        + "2026-06-15 00:00:03.000[main][INFO][com.example.A] - three\n"
+                        + "2026-06-15 00:00:04.000[main][ERROR][com.example.A] - four\n"
+                        + "2026-06-15 00:00:05.000[main][INFO][com.example.A] - five\n");
+    }
+
+    private List<String> messagesOf(List<LogIndex.EntryRow> rows) {
+        List<String> out = new ArrayList<>();
+        for (LogIndex.EntryRow r : rows) {
+            out.add(r.message);
+        }
+        return out;
+    }
+
+    /** 同じ絞り込みを SQL 押し下げ経路と全件走査経路の双方で行い、結果が一致すること。 */
+    private void assertSamePage(Connection conn, QueryFilter pushdown, long offset, long limit)
+            throws Exception {
+        QueryFilter scan = new QueryFilter();
+        scan.levels = pushdown.levels;
+        scan.sinceMillis = pushdown.sinceMillis;
+        scan.untilMillis = pushdown.untilMillis;
+        // 何にでも一致する正規表現を足すだけで走査経路に入る（絞り込み結果は変わらない）。
+        scan.messageRe = QueryFilter.compileRegex(".");
+
+        LogQuery.Result a = LogQuery.queryLogs(conn, pushdown, offset, limit);
+        LogQuery.Result b = LogQuery.queryLogs(conn, scan, offset, limit);
+        assertEquals(b.total, a.total, "総ヒット数");
+        assertEquals(messagesOf(b.page), messagesOf(a.page), "ページ内容と並び");
+    }
+
+    /**
+     * 正規表現・grep が無いときの SQL 押し下げ経路（COUNT + LIMIT/OFFSET）が、
+     * 全件走査経路と同じ件数・並び・ページ境界を返すこと。
+     */
+    @Test
+    void pushdownMatchesScanPath(@TempDir Path tmp) throws Exception {
+        Path log = writeFiveLines(tmp);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+
+            for (long offset : new long[] {0, 2, 4, 10}) {
+                assertSamePage(conn, new QueryFilter(), offset, 2);
+            }
+
+            QueryFilter byLevel = new QueryFilter();
+            byLevel.levels = QueryFilter.parseLevelFilter("ERROR");
+            assertSamePage(conn, byLevel, 0, 10);
+            assertSamePage(conn, byLevel, 1, 10);
+
+            QueryFilter byRange = new QueryFilter();
+            byRange.sinceMillis = TimeUtil.parseUiDatetime("2026-06-15 00:00:02.000");
+            byRange.untilMillis = TimeUtil.parseUiDatetime("2026-06-15 00:00:04.000");
+            assertSamePage(conn, byRange, 0, 10);
+            assertSamePage(conn, byRange, 1, 1);
+
+            // 押し下げ経路でも総ヒット数はページ内件数ではなく全体を返すこと。
+            LogQuery.Result page = LogQuery.queryLogs(conn, new QueryFilter(), 0, 2);
+            assertEquals(5, page.total);
+            assertEquals(2, page.page.size());
+        }
+    }
+
+    /**
+     * grep 経路では判定に使った生テキストを {@link LogIndex.EntryRow#raw} に残し、
+     * 一覧 API が同じ内容を読み直さずに済むこと（grep 無しでは設定しない）。
+     */
+    @Test
+    void grepKeepsRawForPageRows(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15 00:00:01.000[main][ERROR][com.example.Foo] - failed\n"
+                        + "java.lang.RuntimeException: boom\n"
+                        + "\tat com.example.Foo.run(Foo.java:10)\n"
+                        + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - ok\n");
+
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+
+            QueryFilter grep = new QueryFilter();
+            grep.grepText = "boom";
+            grep.grepRe = QueryFilter.compileRegex("boom");
+            LogQuery.Result hit = LogQuery.queryLogs(conn, grep, 0, 10);
+            assertEquals(1, hit.total);
+
+            LogIndex.EntryRow e = hit.page.get(0);
+            assertNotNull(e.raw, "grep 判定で読んだ生テキストが保持されていること");
+            assertTrue(e.raw.contains("java.lang.RuntimeException: boom"));
+            assertTrue(e.raw.contains("at com.example.Foo.run(Foo.java:10)"));
+            // byte 範囲から読み直した内容と一致すること（末尾の改行有無だけが差）。
+            String reread = LogIndex.readEntryRaw(Paths.get(e.source), e.byteOffset, e.endByteOffset);
+            assertEquals(reread, e.raw.trim());
+
+            LogQuery.Result noGrep = LogQuery.queryLogs(conn, new QueryFilter(), 0, 10);
+            assertNull(noGrep.page.get(0).raw, "grep 無しでは raw を読まないこと");
         }
     }
 }
