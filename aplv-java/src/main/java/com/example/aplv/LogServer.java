@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,6 +52,15 @@ public final class LogServer {
     private static final int MAX_LIMIT = 5000;
     private static final int DEFAULT_LIMIT = 500;
     /**
+     * 直前の読み込みワーカーの終了を待つ上限。
+     *
+     * <p>中断されたワーカーはパーススレッドの回収（最大
+     * {@link LogIndex#POOL_DRAIN_TIMEOUT_MS}）を終えてから部分索引を破棄し、接続を閉じる。
+     * それより短く待つと DB を掴んだままのワーカーを追い越すことになり、待ち合わせの意味が
+     * なくなる。必ず回収の上限を上回る値にすること。
+     */
+    private static final long PREVIOUS_LOAD_JOIN_MS = LogIndex.POOL_DRAIN_TIMEOUT_MS + 30_000L;
+    /**
      * 一覧 1 行あたりに返す生テキストの上限（文字）。
      *
      * <p>一覧の {@code raw} はクライアント側のハイライト判定にしか使わないため全文は要らない。
@@ -70,6 +80,42 @@ public final class LogServer {
     /** 読み込みワーカーの世代。新しい load で増加し、古いワーカーは結果を破棄する。 */
     private final AtomicLong loadGeneration = new AtomicLong(0);
     private volatile Thread loadWorker;
+
+    /** ロード完了時に確定する meta 情報。長い検索が dbLock を握っていても参照できる。 */
+    private static final class MetaSnapshot {
+        static final MetaSnapshot EMPTY = new MetaSnapshot(0, null, null, 0,
+                Collections.<SkippedSample>emptyList());
+
+        final long total;
+        final String first;
+        final String last;
+        final int skippedLines;
+        final List<SkippedSample> skippedSamples;
+
+        MetaSnapshot(long total, String first, String last, int skippedLines,
+                List<SkippedSample> skippedSamples) {
+            this.total = total;
+            this.first = first;
+            this.last = last;
+            this.skippedLines = skippedLines;
+            this.skippedSamples = skippedSamples;
+        }
+    }
+
+    /** 認識できなかった行のサンプル（file_id をログファイルパスに解決済み）。 */
+    private static final class SkippedSample {
+        final String source;
+        final long lineNo;
+        final String preview;
+
+        SkippedSample(String source, long lineNo, String preview) {
+            this.source = source;
+            this.lineNo = lineNo;
+            this.preview = preview;
+        }
+    }
+
+    private volatile MetaSnapshot metaSnapshot = MetaSnapshot.EMPTY;
 
     private final Object loadLock = new Object();
     private final Object dbLock = new Object();
@@ -162,7 +208,7 @@ public final class LogServer {
 
     private void startLoad() {
         final long gen = loadGeneration.incrementAndGet();
-        Thread previous;
+        final Thread previous;
         synchronized (loadLock) {
             previous = loadWorker;
             loadStatus = "loading";
@@ -176,6 +222,17 @@ public final class LogServer {
         final List<Path> paths = new ArrayList<>(logPaths);
 
         Thread worker = new Thread(() -> {
+            // 直前のワーカーは中断されると部分索引を破棄する。その後始末より先に同じ DB を
+            // 開くと、Windows では使用中ファイルの削除が失敗して新旧が同一 DB を書き合い、
+            // 完成した索引が空にされることがある。必ず終了を待ってから始める。
+            if (previous != null) {
+                try {
+                    previous.join(PREVIOUS_LOAD_JOIN_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
             Connection newConn = null;
             boolean adopted = false;
             try {
@@ -228,12 +285,14 @@ public final class LogServer {
                 if (isStale(gen)) {
                     return;
                 }
+                MetaSnapshot snapshot = snapshotMeta(newConn, total);
                 synchronized (loadLock) {
                     if (isStale(gen)) {
                         return;
                     }
                     replaceConn(newConn);
                     adopted = true;
+                    metaSnapshot = snapshot;
                     loadProgress.set(total);
                     loadStatus = "ready";
                 }
@@ -251,11 +310,13 @@ public final class LogServer {
                 }
             }
         }, "aplv-loader");
-        synchronized (loadLock) {
-            loadWorker = worker;
-        }
         worker.setDaemon(true);
-        worker.start();
+        synchronized (loadLock) {
+            // 起動まで含めてロック内で行う。未起動のスレッドへの join は即座に返るため、
+            // ここに隙間があると次のワーカーが待ち合わせを空振りする。
+            loadWorker = worker;
+            worker.start();
+        }
     }
 
     private boolean isStale(long gen) {
@@ -294,23 +355,45 @@ public final class LogServer {
 
     // ---- API: meta --------------------------------------------------------
 
-    private JsonObject metaPayload() throws Exception {
+    /** ロード完了直後に meta 情報を確定させる（以後 /api/meta は DB を触らない）。 */
+    private static MetaSnapshot snapshotMeta(Connection source, long total) throws SQLException {
+        String[] bounds = LogIndex.timestampBounds(source);
+        int skipped = LogIndex.getSkippedLineCount(source);
+        List<SkippedSample> samples = new ArrayList<>();
+        if (skipped > 0) {
+            for (SkippedLine line : LogIndex.getSkippedLineSamples(source)) {
+                String path = LogIndex.filePath(source, line.fileId);
+                samples.add(new SkippedSample(path != null ? path : "", line.lineNo, line.preview));
+            }
+        }
+        return new MetaSnapshot(total, bounds[0], bounds[1], skipped, samples);
+    }
+
+    /**
+     * 読み込み状態の応答。
+     *
+     * <p>件数・時刻範囲はロード完了時に確定するため DB を引かない。長時間の全文検索が
+     * {@code dbLock} を握っていても、進捗ポーリングが止まらないようにするため。
+     */
+    private JsonObject metaPayload() {
         ensureLoadStarted();
-        boolean loading = "loading".equals(loadStatus);
+        // 状態は 1 回だけ読む（複数回読むと loading と ready の判定がずれ得る）。
+        // metaSnapshot は loadStatus より先に書かれるため、ready を見たなら最新が見える。
+        String status = loadStatus;
+        boolean loading = "loading".equals(status);
+        boolean ready = "ready".equals(status);
         long progress = loadProgress.get();
+        MetaSnapshot snapshot = metaSnapshot;
 
         long total;
         String first = null;
         String last = null;
         if (loading) {
             total = progress;
-        } else if ("ready".equals(loadStatus)) {
-            synchronized (dbLock) {
-                total = LogIndex.entryCount(conn);
-                String[] bounds = LogIndex.timestampBounds(conn);
-                first = bounds[0];
-                last = bounds[1];
-            }
+        } else if (ready) {
+            total = snapshot.total;
+            first = snapshot.first;
+            last = snapshot.last;
         } else {
             total = 0;
         }
@@ -324,23 +407,17 @@ public final class LogServer {
         payload.addProperty("total", total);
         payload.addProperty("first", first);
         payload.addProperty("last", last);
-        if (!loading && "ready".equals(loadStatus)) {
-            synchronized (dbLock) {
-                int skipped = LogIndex.getSkippedLineCount(conn);
-                if (skipped > 0) {
-                    payload.addProperty("skipped_lines", skipped);
-                    JsonArray samples = new JsonArray();
-                    for (SkippedLine s : LogIndex.getSkippedLineSamples(conn)) {
-                        JsonObject o = new JsonObject();
-                        String source = LogIndex.filePath(conn, s.fileId);
-                        o.addProperty("source", source != null ? source : "");
-                        o.addProperty("line_no", s.lineNo);
-                        o.addProperty("preview", s.preview);
-                        samples.add(o);
-                    }
-                    payload.add("skipped_samples", samples);
-                }
+        if (ready && snapshot.skippedLines > 0) {
+            payload.addProperty("skipped_lines", snapshot.skippedLines);
+            JsonArray samples = new JsonArray();
+            for (SkippedSample sample : snapshot.skippedSamples) {
+                JsonObject o = new JsonObject();
+                o.addProperty("source", sample.source);
+                o.addProperty("line_no", sample.lineNo);
+                o.addProperty("preview", sample.preview);
+                samples.add(o);
             }
+            payload.add("skipped_samples", samples);
         }
         if (loadError != null) {
             payload.addProperty("load_error", loadError);

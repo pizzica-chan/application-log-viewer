@@ -44,6 +44,10 @@ public final class LogIndex {
     private static final long PROGRESS_INTERVAL = 50_000L;
     /** トランザクションを区切るコミット間隔（巨大トランザクションによるメモリ肥大を防ぐ）。 */
     private static final long COMMIT_INTERVAL = 200_000L;
+    /** 中断時にパーススレッドの終了を待つ上限（従来の awaitTermination と同じ）。 */
+    static final long POOL_DRAIN_TIMEOUT_MS = 60_000L;
+    private static final long POOL_DRAIN_TIMEOUT_NANOS =
+            TimeUnit.MILLISECONDS.toNanos(POOL_DRAIN_TIMEOUT_MS);
     /** skipped 行サンプルの上限（UI 表示用）。 */
     private static final int MAX_SKIPPED_SAMPLES = 5;
     private static final int PREVIEW_MAX_LEN = 120;
@@ -499,10 +503,25 @@ public final class LogIndex {
                 }
             }
         } finally {
-            pool.shutdown();
+            // 中断した場合、パーススレッドは queue.put でブロックしたまま残る。
+            // 割り込んだうえで残りを捨て続け、確実に終了させる（放置するとスレッドが漏れる）。
+            if (buildComplete) {
+                pool.shutdown();
+            } else {
+                pool.shutdownNow();
+            }
+            long drainDeadline = System.nanoTime() + POOL_DRAIN_TIMEOUT_NANOS;
             try {
-                pool.awaitTermination(1, TimeUnit.MINUTES);
+                while (!pool.awaitTermination(200, TimeUnit.MILLISECONDS)) {
+                    queue.clear();
+                    if (System.nanoTime() - drainDeadline >= 0) {
+                        // 割り込みに応じないスレッド（ネットワークドライブの read 等）は諦める。
+                        break;
+                    }
+                }
             } catch (InterruptedException e) {
+                pool.shutdownNow();
+                queue.clear();
                 Thread.currentThread().interrupt();
             }
         }
