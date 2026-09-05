@@ -1,6 +1,7 @@
 package com.example.aplv;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -36,7 +37,7 @@ public final class QueryFilter {
         for (String part : value.split(",")) {
             String p = part.trim();
             if (!p.isEmpty()) {
-                result.add(p.toUpperCase());
+                result.add(p.toUpperCase(Locale.ROOT));
             }
         }
         return result.isEmpty() ? null : result;

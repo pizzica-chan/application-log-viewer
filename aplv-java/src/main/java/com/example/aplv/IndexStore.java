@@ -11,7 +11,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * SQLite インデックスファイルの保存場所とクリーンアップ。
@@ -23,8 +22,6 @@ public final class IndexStore {
 
     private static final long DEFAULT_MAX_AGE_MS = 7L * 24 * 3600 * 1000;
     private static final int DEFAULT_MAX_COUNT = 20;
-
-    private static final AtomicBoolean CLEANUP_DONE = new AtomicBoolean(false);
 
     private IndexStore() {
     }
@@ -161,10 +158,6 @@ public final class IndexStore {
     /** tmp/aplv を作成し、stale クリーンアップを実行する。 */
     public static void ensureTmpDirFor(Path logRoot) throws IOException {
         Files.createDirectories(tmpIndexDir());
-        if (CLEANUP_DONE.compareAndSet(false, true)) {
-            cleanupStaleIndexes(logRoot);
-        } else {
-            cleanupStaleIndexes(logRoot);
-        }
+        cleanupStaleIndexes(logRoot);
     }
 }

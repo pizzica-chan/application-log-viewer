@@ -110,22 +110,27 @@ function parseIsoParts(iso) {
   };
 }
 
-function isoToMsJst(iso) {
+/**
+ * ログの時刻文字列を計算用の数値へ。タイムゾーン変換はせず、書かれている暦の値を
+ * そのまま扱う（サーバ側の内部表現と同じ考え方）。対になる msToFields /
+ * msToApiDatetime も getUTC* で読み戻すため、ブラウザのタイムゾーンに影響されない。
+ */
+function isoToMs(iso) {
   const p = parseIsoParts(iso);
   if (!p) return null;
-  return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - 9 * 3600000;
+  return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
 }
 
-function msJstToFields(ms) {
-  const jst = new Date(ms + 9 * 3600000);
+function msToFields(ms) {
+  const d = new Date(ms);
   return {
     date:
-      jst.getUTCFullYear() +
+      d.getUTCFullYear() +
       "-" +
-      pad2(jst.getUTCMonth() + 1) +
+      pad2(d.getUTCMonth() + 1) +
       "-" +
-      pad2(jst.getUTCDate()),
-    time: pad2(jst.getUTCHours()) + ":" + pad2(jst.getUTCMinutes()),
+      pad2(d.getUTCDate()),
+    time: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()),
   };
 }
 
@@ -157,12 +162,12 @@ function widenDateInputBounds(startDate, endDate) {
 }
 
 function setExactQueryRange(sinceMs, untilMs) {
-  const start = msJstToFields(sinceMs);
-  const end = msJstToFields(untilMs);
+  const start = msToFields(sinceMs);
+  const end = msToFields(untilMs);
   widenDateInputBounds(start.date, end.date);
   exactQueryRange = {
-    since: msJstToApiDatetime(sinceMs),
-    until: msJstToApiDatetime(untilMs),
+    since: msToApiDatetime(sinceMs),
+    until: msToApiDatetime(untilMs),
   };
   setDatetimeFields(start, end);
 }
@@ -193,16 +198,16 @@ function isoToApiDatetime(iso) {
   return iso.replace("T", " ");
 }
 
-/** JST 基準の epoch ms を API の日時文字列へ（ミリ秒まで）。 */
-function msJstToApiDatetime(ms) {
-  const jst = new Date(ms + 9 * 3600000);
-  const y = jst.getUTCFullYear();
-  const mo = pad2(jst.getUTCMonth() + 1);
-  const d = pad2(jst.getUTCDate());
-  const h = pad2(jst.getUTCHours());
-  const mi = pad2(jst.getUTCMinutes());
-  const sec = pad2(jst.getUTCSeconds());
-  const milli = String(jst.getUTCMilliseconds()).padStart(3, "0");
+/** isoToMs が返す数値を API の日時文字列へ（ミリ秒まで）。 */
+function msToApiDatetime(ms) {
+  const t = new Date(ms);
+  const y = t.getUTCFullYear();
+  const mo = pad2(t.getUTCMonth() + 1);
+  const d = pad2(t.getUTCDate());
+  const h = pad2(t.getUTCHours());
+  const mi = pad2(t.getUTCMinutes());
+  const sec = pad2(t.getUTCSeconds());
+  const milli = String(t.getUTCMilliseconds()).padStart(3, "0");
   return `${y}-${mo}-${d} ${h}:${mi}:${sec}.${milli}`;
 }
 
@@ -229,8 +234,8 @@ function updateRangeUi() {
   els.rangeLast1h.disabled = !ready;
   els.rangeLast24h.disabled = !ready;
   if (ready) {
-    els.sinceDate.min = msJstToFields(isoToMsJst(metaRange.first)).date;
-    els.sinceDate.max = msJstToFields(isoToMsJst(metaRange.last)).date;
+    els.sinceDate.min = msToFields(isoToMs(metaRange.first)).date;
+    els.sinceDate.max = msToFields(isoToMs(metaRange.last)).date;
     els.untilDate.min = els.sinceDate.min;
     els.untilDate.max = els.sinceDate.max;
     els.rangeHint.textContent =
@@ -249,36 +254,36 @@ function updateRangeUi() {
 
 function applyFirstHours(hours) {
   if (!metaRange.first || !metaRange.last) return;
-  const startMs = isoToMsJst(metaRange.first);
-  const endMs = isoToMsJst(metaRange.last);
+  const startMs = isoToMs(metaRange.first);
+  const endMs = isoToMs(metaRange.last);
   if (startMs == null || endMs == null) return;
   const untilMs = Math.min(endMs, startMs + hours * 3600000);
   exactQueryRange = {
     since: isoToApiDatetime(metaRange.first),
-    until: msJstToApiDatetime(untilMs),
+    until: msToApiDatetime(untilMs),
   };
-  setDatetimeFields(msJstToFields(startMs), msJstToFields(untilMs));
+  setDatetimeFields(msToFields(startMs), msToFields(untilMs));
   offset = 0;
   loadLogs();
 }
 
 function applyLastHours(hours) {
   if (!metaRange.first || !metaRange.last) return;
-  const endMs = isoToMsJst(metaRange.last);
-  const startMs = isoToMsJst(metaRange.first);
+  const endMs = isoToMs(metaRange.last);
+  const startMs = isoToMs(metaRange.first);
   if (endMs == null || startMs == null) return;
   const sinceMs = Math.max(startMs, endMs - hours * 3600000);
   exactQueryRange = {
-    since: msJstToApiDatetime(sinceMs),
+    since: msToApiDatetime(sinceMs),
     until: isoToApiDatetime(metaRange.last),
   };
-  setDatetimeFields(msJstToFields(sinceMs), msJstToFields(endMs));
+  setDatetimeFields(msToFields(sinceMs), msToFields(endMs));
   offset = 0;
   loadLogs();
 }
 
 function applyAroundMinutes(isoTimestamp, minutes) {
-  const centerMs = isoToMsJst(isoTimestamp);
+  const centerMs = isoToMs(isoTimestamp);
   if (centerMs == null) return false;
   const delta = minutes * 60 * 1000;
   setExactQueryRange(centerMs - delta, centerMs + delta);
@@ -293,9 +298,9 @@ function getPageLimit() {
   return Math.min(Math.floor(raw), MAX_PAGE_LIMIT);
 }
 
-function buildQuery() {
+function buildQuery(pageLimit) {
   const params = new URLSearchParams();
-  params.set("limit", String(getPageLimit()));
+  params.set("limit", String(pageLimit));
   params.set("offset", String(offset));
   for (const [key, el] of [
     ["level", els.level],
@@ -319,6 +324,10 @@ function buildQuery() {
 
 let loadPollTimer = null;
 let lastPageItems = [];
+/** 現在表示中の結果を取得したときの表示件数。入力欄を変えてもページャがずれないよう保持する。 */
+let currentPageLimit = DEFAULT_PAGE_LIMIT;
+/** 検索リクエストの通し番号。古いレスポンスで新しい結果を上書きしないために使う。 */
+let logsRequestSeq = 0;
 
 function getHighlightNeedle() {
   const text = els.highlight.value.trim();
@@ -562,10 +571,13 @@ function addCell(tr, content, options = {}) {
 }
 
 async function loadLogs() {
+  const pageLimit = getPageLimit();
+  const seq = (logsRequestSeq += 1);
   pushLoading("ログを検索中...");
   try {
-    const res = await fetch("/api/logs?" + buildQuery());
+    const res = await fetch("/api/logs?" + buildQuery(pageLimit));
     const data = await res.json();
+    if (seq !== logsRequestSeq) return; // より新しい検索が始まっているので破棄
     if (data.loading) {
       const message = `ログを読み込み中... ${data.load_progress.toLocaleString()} 行`;
       els.resultCount.textContent = message;
@@ -578,14 +590,14 @@ async function loadLogs() {
       setLoadingUi(true);
       return;
     }
+    setBackgroundLoading(false);
+    setLoadingUi(false);
     if (!res.ok) {
       alert(data.error || "取得に失敗しました。");
       return;
     }
-    setBackgroundLoading(false);
-    setLoadingUi(false);
     lastTotal = data.total;
-    const pageLimit = getPageLimit();
+    currentPageLimit = pageLimit;
     els.resultCount.textContent = `${data.total.toLocaleString()} 件ヒット`;
     const page = Math.floor(offset / pageLimit) + 1;
     const pages = Math.max(1, Math.ceil(data.total / pageLimit));
@@ -730,13 +742,12 @@ els.regexSamples.addEventListener("click", () => {
 els.highlight.addEventListener("input", applyRowHighlights);
 
 els.prev.addEventListener("click", () => {
-  offset = Math.max(0, offset - getPageLimit());
+  offset = Math.max(0, offset - currentPageLimit);
   loadLogs();
 });
 els.next.addEventListener("click", () => {
-  const pageLimit = getPageLimit();
-  if (offset + pageLimit < lastTotal) {
-    offset += pageLimit;
+  if (offset + currentPageLimit < lastTotal) {
+    offset += currentPageLimit;
     loadLogs();
   }
 });

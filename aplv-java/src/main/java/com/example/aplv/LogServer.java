@@ -660,8 +660,11 @@ public final class LogServer {
         } catch (IOException ignored) {
             data = null;
         }
-        synchronized (staticCache) {
-            staticCache.put(name, data);
+        if (data != null) {
+            // 存在しないリソース名はキャッシュしない（リクエスト由来のキーでマップが無限に育つため）
+            synchronized (staticCache) {
+                staticCache.put(name, data);
+            }
         }
         return data;
     }
