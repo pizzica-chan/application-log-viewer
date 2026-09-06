@@ -3,6 +3,7 @@ const MAX_PAGE_LIMIT = 5000;
 let offset = 0;
 let lastTotal = 0;
 let browsePath = "";
+let browseParent = null;
 let metaRange = { first: null, last: null };
 
 const els = {
@@ -513,14 +514,23 @@ async function loadDirectory() {
 }
 
 async function openBrowseDialog() {
-  browsePath = els.logDir.value.trim();
-  await refreshBrowseList();
+  await refreshBrowseList(els.logDir.value.trim());
   els.browseDialog.showModal();
 }
 
-async function refreshBrowseList() {
+/**
+ * ディレクトリ一覧を取得して描画する。
+ *
+ * 取得に失敗した場合は現在位置（browsePath / browseParent）を変更しない。
+ * 遷移先を先に代入すると、失敗時に画面表示と現在位置が食い違い、
+ * 「このディレクトリを選択」で存在しないパスを入力欄へ書き戻してしまうため。
+ *
+ * @param nextPath 遷移先。省略時は現在位置を読み直す
+ */
+async function refreshBrowseList(nextPath) {
+  const target = nextPath !== undefined ? nextPath : browsePath;
   const params = new URLSearchParams();
-  if (browsePath) params.set("path", browsePath);
+  if (target) params.set("path", target);
   const res = await fetch("/api/browse?" + params);
   const data = await res.json();
   if (!res.ok) {
@@ -528,8 +538,9 @@ async function refreshBrowseList() {
     return;
   }
   browsePath = data.current;
+  browseParent = data.parent || null;
   els.browseCurrent.textContent = data.current;
-  els.browseUp.disabled = !data.parent;
+  els.browseUp.disabled = !browseParent;
   els.browseList.innerHTML = "";
   for (const dir of data.directories) {
     const li = document.createElement("li");
@@ -537,10 +548,7 @@ async function refreshBrowseList() {
     btn.type = "button";
     btn.textContent = dir.split(/[/\\]/).pop() || dir;
     btn.title = dir;
-    btn.addEventListener("click", async () => {
-      browsePath = dir;
-      await refreshBrowseList();
-    });
+    btn.addEventListener("click", () => refreshBrowseList(dir));
     li.appendChild(btn);
     els.browseList.appendChild(li);
   }
@@ -701,15 +709,8 @@ els.rangeClear.addEventListener("click", () => {
   offset = 0;
   loadLogs();
 });
-els.browseUp.addEventListener("click", async () => {
-  const params = new URLSearchParams();
-  params.set("path", browsePath);
-  const res = await fetch("/api/browse?" + params);
-  const data = await res.json();
-  if (data.parent) {
-    browsePath = data.parent;
-    await refreshBrowseList();
-  }
+els.browseUp.addEventListener("click", () => {
+  if (browseParent) refreshBrowseList(browseParent);
 });
 els.browseSelect.addEventListener("click", () => {
   els.logDir.value = browsePath;
