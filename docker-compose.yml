@@ -5,7 +5,8 @@ services:
     container_name: aplv-java
     restart: unless-stopped
     ports:
-      - "8766:8766"
+      # ループバックのみに公開する（無認証のため LAN へ露出させない）
+      - "127.0.0.1:8766:8766"
     environment:
       APLV_HOME: /app
     volumes:
