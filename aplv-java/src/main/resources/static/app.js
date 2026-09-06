@@ -182,13 +182,14 @@ function clearDatetimeFields() {
 
 function getSinceParam() {
   if (!els.sinceDate.value) return null;
-  const time = els.sinceTime.value || "00:00";
+  // step=60 の time 入力は HH:mm を返すが、秒付きを返す実装に備えて桁を揃える。
+  const time = (els.sinceTime.value || "00:00").slice(0, 5);
   return `${els.sinceDate.value} ${time}:00.000`;
 }
 
 function getUntilParam() {
   if (!els.untilDate.value) return null;
-  const time = els.untilTime.value || "23:59";
+  const time = (els.untilTime.value || "23:59").slice(0, 5);
   // 時刻入力は分単位のため、その分の末尾（59.999 秒）まで含める
   return `${els.untilDate.value} ${time}:59.999`;
 }

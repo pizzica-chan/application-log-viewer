@@ -38,20 +38,33 @@ public final class TimeUtil {
      * UI から渡される日時文字列を epoch millis へ解析する。
      *
      * <p>対応形式: {@code yyyy-MM-ddTHH:mm:ss.SSS} / {@code yyyy-MM-dd HH:mm:ss.SSS} /
-     * {@code ...HH:mm:ss} / {@code yyyy-MM-dd}
+     * {@code ...HH:mm:ss} / {@code ...HH:mm} / {@code yyyy-MM-dd}
+     *
+     * <p>存在しない日時（{@code 2025-13-45} や {@code 2025-02-30} 等）は拒否する。
+     * {@link #toMillis} は暦を検証せず翌月・翌日へ繰り上げるため、検証しないと
+     * 打ち間違いが「別の期間の検索結果」として黙って返ってしまう。
+     * 末尾に余分な文字が付いた入力も、読み飛ばして通さないよう長さで形式を限定する。
      *
      * @throws IllegalArgumentException 解釈できない場合
      */
     public static long parseUiDatetime(String value) {
         String v = value.trim().replace('T', ' ');
+        if (v.length() != 10 && v.length() != 16 && v.length() != 19 && v.length() != 23) {
+            throw invalidDatetime(value);
+        }
+        int year;
+        int month;
+        int day;
+        int hour = 0;
+        int min = 0;
+        int sec = 0;
+        int milli = 0;
+        // 桁位置の切り出しと数値化のみを try で囲む。妥当性判定を中に入れると
+        // NumberFormatException（IllegalArgumentException のサブクラス）と区別できなくなる。
         try {
-            int year = Integer.parseInt(v.substring(0, 4));
-            int month = Integer.parseInt(v.substring(5, 7));
-            int day = Integer.parseInt(v.substring(8, 10));
-            int hour = 0;
-            int min = 0;
-            int sec = 0;
-            int milli = 0;
+            year = Integer.parseInt(v.substring(0, 4));
+            month = Integer.parseInt(v.substring(5, 7));
+            day = Integer.parseInt(v.substring(8, 10));
             if (v.length() >= 16) {
                 hour = Integer.parseInt(v.substring(11, 13));
                 min = Integer.parseInt(v.substring(14, 16));
@@ -59,13 +72,61 @@ public final class TimeUtil {
             if (v.length() >= 19) {
                 sec = Integer.parseInt(v.substring(17, 19));
             }
-            if (v.length() >= 23 && v.charAt(19) == '.') {
+            if (v.length() == 23) {
                 milli = Integer.parseInt(v.substring(20, 23));
             }
-            return toMillis(year, month, day, hour, min, sec, milli);
         } catch (RuntimeException e) {
-            throw new IllegalArgumentException("日時形式を解釈できません: " + value);
+            throw invalidDatetime(value);
         }
+        if (!isValidDateTime(year, month, day, hour, min, sec, milli)) {
+            throw invalidDatetime(value);
+        }
+        return toMillis(year, month, day, hour, min, sec, milli);
+    }
+
+    private static IllegalArgumentException invalidDatetime(String value) {
+        return new IllegalArgumentException(
+                "日時形式を解釈できません（yyyy-MM-dd[ HH:mm[:ss[.SSS]]]）: " + value);
+    }
+
+    /**
+     * 年月日・時分秒が実在する値かどうか（うるう年を考慮した月末日まで判定）。
+     *
+     * <p>秒に 60（うるう秒）は許容しない。この検証は UI 入力に対するもので、
+     * 一覧に表示される時刻は {@link #formatIso} が生成する 0〜59 秒に限られるため、
+     * 60 を通しても翌分へ繰り上がるだけで利用者の意図とずれる。
+     */
+    static boolean isValidDateTime(int year, int month, int day, int hour, int min, int sec,
+            int milli) {
+        if (month < 1 || month > 12) {
+            return false;
+        }
+        if (day < 1 || day > daysInMonth(year, month)) {
+            return false;
+        }
+        return hour >= 0 && hour <= 23
+                && min >= 0 && min <= 59
+                && sec >= 0 && sec <= 59
+                && milli >= 0 && milli <= 999;
+    }
+
+    /** 指定年月の日数。 */
+    static int daysInMonth(int year, int month) {
+        switch (month) {
+            case 2:
+                return isLeapYear(year) ? 29 : 28;
+            case 4:
+            case 6:
+            case 9:
+            case 11:
+                return 30;
+            default:
+                return 31;
+        }
+    }
+
+    private static boolean isLeapYear(int year) {
+        return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
     }
 
     /** epoch millis を {@code yyyy-MM-ddTHH:mm:ss.SSS} へ整形する（フロント表示用）。 */

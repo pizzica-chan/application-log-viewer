@@ -196,7 +196,10 @@ paths:
           in: query
           description: |
             開始日時（この時刻以降）。
-            対応形式: `yyyy-MM-ddTHH:mm:ss.SSS` / `yyyy-MM-dd HH:mm:ss.SSS` / `HH:mm:ss` 付き / `yyyy-MM-dd`
+            対応形式: `yyyy-MM-ddTHH:mm:ss.SSS` / `yyyy-MM-dd HH:mm:ss.SSS` / `HH:mm:ss` 付き /
+            `HH:mm` 付き / `yyyy-MM-dd`。
+            存在しない日時（`2025-02-30` 等）や末尾に余分な文字がある入力は 400 を返す
+            （繰り上げて別の期間として扱わない）。
           required: false
           schema:
             type: string
