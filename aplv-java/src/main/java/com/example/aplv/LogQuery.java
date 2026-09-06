@@ -24,9 +24,9 @@ import com.example.aplv.LogIndex.EntryRow;
  * に起こして数え上げる処理を省く。日時のみで絞り込む場合は {@code idx_entries_ts} を
  * 並び順どおりに辿れるため、ページ送りは表示件数に比例した時間で返る。
  *
- * <p>レベルで絞り込む場合は SQLite が {@code idx_entries_level} を選ぶため並べ直しが入り、
- * ヒット件数に比例した時間がかかる（これは Java 側で数えていた頃も同じで、同じ ORDER BY を
- * 投げている以上避けられない）。解消するには {@code entries(level, ts_millis, ...)} の索引が要る。
+ * <p>レベル絞り込みも、単一レベルなら {@code idx_entries_level_ts} を並び順どおりに辿れる。
+ * 複数レベルを {@code IN} で並べた場合だけは索引の並びを保てないため、SQLite は
+ * {@code idx_entries_ts} を走査しながらレベルを都度判定する。
  */
 public final class LogQuery {
 
