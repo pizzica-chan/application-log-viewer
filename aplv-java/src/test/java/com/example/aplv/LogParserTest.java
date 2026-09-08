@@ -333,30 +333,27 @@ class LogParserTest {
     }
 
     /**
-     * 事前ふるいの前提 —— {@code ^main(?:$|:)} 以外の選択肢がすべて {@code '-'} を含むこと。
+     * 事前ふるいの前提を守るため、{@code THREAD_HINT} のパターンをピン留めする。
      *
-     * <p>{@link LogParser#looksLikeThread} は「{@code '-'} が無く "main" でも始まらない
-     * 文字列は一致しえない」という性質に依存している。{@code worker\d+} のように
-     * ハイフンを含まない選択肢が足されると、ふるいが黙って誤判定するようになる。
+     * <p>{@link LogParser#looksLikeThread} は「{@code ^main(?:$|:)} 以外の選択肢は、
+     * ハイフンを含まない文字列には一致しない」ことに依存している。選択肢が 1 つ増えるだけで
+     * この前提は崩れうるが、崩れたかどうかを機械的に判定するのは難しい。
+     * 例えば「選択肢の文字列にハイフンが含まれるか」で見ると、{@code worker[0-9]+} のように
+     * 文字クラスの範囲指定としてハイフンが現れるものを通してしまう
+     * （実際に {@code looksLikeThread("worker7")} と正規表現の判定が食い違う）。
      *
-     * <p>差分試験は乱数の文字集合の外にある単語を作れないためこれを検出できない。
-     * ここではパターン文字列そのものを見て前提を固定する。
+     * <p>そこでパターン全体を完全一致で固定する。無害な変更でも落ちるが、それが狙いで、
+     * 前提を破りうる変更を形にかかわらず捕まえられる。更新は期待値 1 か所で済む。
      */
     @Test
-    void threadHintAlternativesAllContainHyphen() {
-        String pattern = LogParser.THREAD_HINT.pattern();
-        assertTrue(pattern.startsWith("(?:") && pattern.endsWith(")"),
-                "パターンの入れ物が変わった。ふるいの前提を見直すこと: " + pattern);
-        String body = pattern.substring(3, pattern.length() - 1);
-
-        String mainAlt = "^main(?:$|:)|";
-        assertTrue(body.startsWith(mainAlt),
-                "先頭の選択肢が変わった。ふるいの main 判定を見直すこと: " + body);
-
-        for (String alt : body.substring(mainAlt.length()).split("\\|")) {
-            assertTrue(alt.indexOf('-') >= 0,
-                    "ハイフンを含まない選択肢が追加されている。looksLikeThread の"
-                            + "事前ふるいが誤判定するので、ふるい側も直すこと: " + alt);
-        }
+    void threadHintIsPinnedBecausePrefilterDependsOnIt() {
+        assertEquals(
+                "(?:^main(?:$|:)|exec-\\d+|pool-\\d+-thread-\\d+|scheduler-\\d+"
+                        + "|ajp-|http-nio-|https-nio-|catalina-|-exec-\\d+$)",
+                LogParser.THREAD_HINT.pattern(),
+                "THREAD_HINT を変更した。looksLikeThread の事前ふるいは「^main(?:$|:) 以外の"
+                        + "選択肢はハイフンを含まない文字列に一致しない」ことに依存している。"
+                        + "追加した選択肢がその前提を破らないか確認し（破るならふるい側も直す）、"
+                        + "問題なければこの期待値を更新すること");
     }
 }
