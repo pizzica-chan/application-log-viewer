@@ -40,6 +40,21 @@ public final class LogIndex {
 
     /** INSERT バッチサイズ。 */
     private static final int BATCH_SIZE = 5000;
+    /**
+     * SQLite のページサイズ。
+     *
+     * <p>既定の 4096 より B-tree が浅くなり、取込・索引構築とも速い。
+     * 最初のテーブル作成より前にしか効かないため {@link #initSchema} の先頭で設定する
+     * （既存 DB では無視される。再構築時はファイルごと作り直すので新しい値が効く）。
+     */
+    private static final int PAGE_SIZE = 16384;
+    /**
+     * {@code ANALYZE} が走査する行数の上限。
+     *
+     * <p>プランナが必要とするのは列の選択度の桁感なので、全行を数える完全な統計は要らない。
+     * 数百万件では完全な統計に 1〜2 秒かかるのに対し、サンプリングなら数十ミリ秒で済む。
+     */
+    private static final int ANALYSIS_LIMIT = 1000;
     /** 進捗通知の間隔（エントリ数）。 */
     private static final long PROGRESS_INTERVAL = 50_000L;
     /** トランザクションを区切るコミット間隔（巨大トランザクションによるメモリ肥大を防ぐ）。 */
@@ -120,6 +135,8 @@ public final class LogIndex {
     private static void initSchema(Connection conn) throws SQLException, IOException {
         try (Statement st = conn.createStatement()) {
             // 構築・参照の双方で十分な速度が出るチューニング。
+            // page_size は最初のテーブル作成より前でないと効かないため先頭に置く。
+            st.execute("PRAGMA page_size = " + PAGE_SIZE);
             st.execute("PRAGMA journal_mode = MEMORY");
             st.execute("PRAGMA synchronous = OFF");
             st.execute("PRAGMA temp_store = MEMORY");
@@ -133,13 +150,36 @@ public final class LogIndex {
                     + "id INTEGER PRIMARY KEY, file_id INTEGER NOT NULL, line_no INTEGER NOT NULL, "
                     + "byte_offset INTEGER NOT NULL, end_byte_offset INTEGER, ts_millis INTEGER NOT NULL, "
                     + "logger TEXT NOT NULL, level TEXT NOT NULL, thread TEXT NOT NULL, message TEXT NOT NULL)");
+        }
+        // 索引はここでは作らない。行ごとに B-tree を更新しながら取り込むより、
+        // 取込後にまとめて作る方が速いため（buildIndexTx の最後で作成する）。
+        // 既存の索引を再利用する経路では ensureIndexes が用意する。
+    }
+
+    /**
+     * 参照に必要な索引を用意する（無ければ作る）。
+     *
+     * <p>{@code idx_entries_level_ts} は先頭列が {@code level} なので、レベル等価条件では
+     * {@code idx_entries_level} の代わりになり、しかも時系列の並びをそのまま辿れる。
+     * 幅の狭い {@code idx_entries_level} が残っていると SQLite がそちらを選び、
+     * 並べ直しが入って遅くなることがあるため削除する。
+     */
+    static void ensureIndexes(Connection conn) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            st.execute("DROP INDEX IF EXISTS idx_entries_level");
             st.execute("CREATE INDEX IF NOT EXISTS idx_entries_ts "
                     + "ON entries(ts_millis, file_id, line_no)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_entries_level ON entries(level)");
-            // レベル絞り込み + 時系列ソートの組み合わせ用。これが無いと SQLite は
-            // idx_entries_level を選び、ヒット全件を並べ直してから LIMIT を適用する。
             st.execute("CREATE INDEX IF NOT EXISTS idx_entries_level_ts "
                     + "ON entries(level, ts_millis, file_id, line_no)");
+        }
+    }
+
+    /** 取込前に entries の索引を落とす（行ごとの B-tree 更新と索引からの削除を避ける）。 */
+    private static void dropEntryIndexes(Connection conn) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            st.execute("DROP INDEX IF EXISTS idx_entries_ts");
+            st.execute("DROP INDEX IF EXISTS idx_entries_level");
+            st.execute("DROP INDEX IF EXISTS idx_entries_level_ts");
         }
     }
 
@@ -147,29 +187,19 @@ public final class LogIndex {
      * 索引の統計（{@code sqlite_stat1}）を更新する。
      *
      * <p>統計が無いと SQLite は列の選択度を知らず、レベル絞り込みで
-     * {@code idx_entries_level} を選んで並べ直してしまう。統計があれば
-     * {@code idx_entries_level_ts} を並び順どおりに辿れる。
+     * {@code idx_entries_level_ts} ではなく {@code idx_entries_ts} の全走査を選ぶことがある。
+     *
+     * <p>サンプリング（{@link #ANALYSIS_LIMIT}）のため行数に関係なく数十ミリ秒で終わる。
+     * 索引構成を変えると既存の統計は古くなるので、有無を判定せず毎回作り直す。
      * 最適化のための処理なので、失敗しても構築自体は成功扱いにする。
      */
     static void updateStatistics(Connection conn) {
         try (Statement st = conn.createStatement()) {
+            st.execute("PRAGMA analysis_limit = " + ANALYSIS_LIMIT);
             st.execute("ANALYZE");
         } catch (SQLException e) {
             // 統計が無くても結果は正しい（遅くなるだけ）ので無視する
         }
-    }
-
-    /** 統計が未作成なら作る。既存インデックスを再利用する経路で使う。 */
-    static void ensureStatistics(Connection conn) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_stat1'")) {
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return;
-                }
-            }
-        }
-        updateStatistics(conn);
     }
 
     /**
@@ -393,6 +423,7 @@ public final class LogIndex {
 
     private static BuildResult buildIndexTx(Connection conn, List<Path> paths, ProgressCallback progress,
             boolean enableFts) throws SQLException, IOException {
+        dropEntryIndexes(conn);
         clearIndex(conn);
         boolean hasFts;
         if (enableFts) {
@@ -535,13 +566,23 @@ public final class LogIndex {
             throw new IOException("インデックス構築が中断されました");
         }
 
+        // 索引は全行を入れ終えてから作る。巨大トランザクションの中で作るとロールバック
+        // ジャーナルがメモリを圧迫するため、いったん取込を確定してから作成する。
+        conn.commit();
+        conn.setAutoCommit(true);
+        try {
+            ensureIndexes(conn);
+            updateStatistics(conn);
+        } finally {
+            conn.setAutoCommit(false);
+        }
+
         try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('fingerprint', ?)")) {
             ps.setString(1, fp);
             ps.executeUpdate();
         }
         saveSkippedMeta(conn, (int) skippedCounter.get(), skippedSamples);
-        updateStatistics(conn);
         conn.commit();
 
         if (progress != null) {

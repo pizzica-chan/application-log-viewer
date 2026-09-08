@@ -277,8 +277,10 @@ public final class LogServer {
                         total = built.entryCount;
                     } else {
                         total = LogIndex.entryCount(newConn);
-                        // 旧バージョンが作った索引には統計が無く、レベル絞り込みが遅くなる。
-                        LogIndex.ensureStatistics(newConn);
+                        // 索引と統計は取込時にしか作らないため、再利用時はここで補う
+                        // （旧バージョンが作った DB には新しい索引・統計が無い）。
+                        LogIndex.ensureIndexes(newConn);
+                        LogIndex.updateStatistics(newConn);
                         loadProgress.set(total);
                     }
                 }

@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>複数ファイルの並列インデックスと ts_millis 昇順マージ</li>
  *   <li>offset / limit によるページング</li>
  *   <li>SQL 押し下げ経路と全件走査経路が同一結果を返すこと</li>
+ *   <li>取込後の索引構成と統計（旧構成からの移行を含む）</li>
  * </ul>
  *
  * <p>担保すること:
@@ -41,6 +42,7 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>ログ追記後や FTS 設定変更時に stale インデックスを検知できる</li>
  *   <li>FTS 非対応環境でも grep が全件スキャンで同等の結果を返す</li>
  *   <li>正規表現の有無でクエリ経路が変わっても件数・並び・ページ境界が変わらない</li>
+ *   <li>索引は取込後に作られ、参照時に必要な構成が揃っている</li>
  * </ul>
  */
 class LogIndexTest {
@@ -406,6 +408,84 @@ class LogIndexTest {
 
             LogQuery.Result noGrep = LogQuery.queryLogs(conn, new QueryFilter(), 0, 10);
             assertNull(noGrep.page.get(0).raw, "grep 無しでは raw を読まないこと");
+        }
+    }
+
+    private List<String> indexNames(Connection conn) throws Exception {
+        List<String> names = new ArrayList<>();
+        try (java.sql.Statement st = conn.createStatement();
+             java.sql.ResultSet rs = st.executeQuery(
+                     "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+                             + " ORDER BY name")) {
+            while (rs.next()) {
+                names.add(rs.getString(1));
+            }
+        }
+        return names;
+    }
+
+    private List<String> analyzedIndexes(Connection conn) throws Exception {
+        List<String> names = new ArrayList<>();
+        try (java.sql.Statement st = conn.createStatement();
+             java.sql.ResultSet rs = st.executeQuery(
+                     "SELECT idx FROM sqlite_stat1 WHERE tbl='entries' ORDER BY idx")) {
+            while (rs.next()) {
+                names.add(rs.getString(1));
+            }
+        }
+        return names;
+    }
+
+    /**
+     * 取込後に索引と統計が揃うこと。
+     *
+     * <p>索引は取込中ではなく取込後にまとめて作るため、buildIndex を通らずに
+     * 索引が消えたままにならないことを担保する。
+     */
+    @Test
+    void buildCreatesIndexesAndStatistics(@TempDir Path tmp) throws Exception {
+        Path log = writeFiveLines(tmp);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            // スキーマ作成直後は索引を持たない（取込後にまとめて作るため）。
+            assertTrue(indexNames(conn).isEmpty(), "初期状態では索引を作らない");
+
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+
+            assertEquals(Arrays.asList("idx_entries_level_ts", "idx_entries_ts"), indexNames(conn));
+            assertEquals(Arrays.asList("idx_entries_level_ts", "idx_entries_ts"),
+                    analyzedIndexes(conn), "作った索引すべての統計があること");
+        }
+    }
+
+    /**
+     * 旧構成の索引を持つ DB を開いても、参照に必要な構成へ揃えられること。
+     *
+     * <p>幅の狭い idx_entries_level が残っていると SQLite がそちらを選び、
+     * 並べ直しが入って遅くなるため削除する。
+     */
+    @Test
+    void ensureIndexesMigratesLegacyLayout(@TempDir Path tmp) throws Exception {
+        Path log = writeFiveLines(tmp);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+
+            // 旧バージョン相当の構成に戻す（level 単独索引あり・複合索引なし）。
+            try (java.sql.Statement st = conn.createStatement()) {
+                st.execute("DROP INDEX idx_entries_level_ts");
+                st.execute("CREATE INDEX idx_entries_level ON entries(level)");
+            }
+            assertEquals(Arrays.asList("idx_entries_level", "idx_entries_ts"), indexNames(conn));
+
+            LogIndex.ensureIndexes(conn);
+
+            assertEquals(Arrays.asList("idx_entries_level_ts", "idx_entries_ts"), indexNames(conn));
+
+            // 索引を入れ替えても検索結果は変わらないこと。
+            QueryFilter byLevel = new QueryFilter();
+            byLevel.levels = QueryFilter.parseLevelFilter("ERROR");
+            LogQuery.Result r = LogQuery.queryLogs(conn, byLevel, 0, 10);
+            assertEquals(2, r.total);
+            assertEquals(Arrays.asList("two", "four"), messagesOf(r.page));
         }
     }
 }
