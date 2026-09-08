@@ -191,6 +191,8 @@ java -jar aplv-java\target\aplv-java.jar --dir samples
 
 詳細は [aplv-java/README.md](aplv-java/README.md) を参照してください。
 
+インデックス構築・検索の最適化については、実測値と判断の根拠を[docs/performance-report.md](docs/performance-report.md) にまとめています（MyBatis-log-viewer へ横展開した際、同じ手法が逆効果になった件を含む）。
+
 ## テスト
 
 ```powershell
