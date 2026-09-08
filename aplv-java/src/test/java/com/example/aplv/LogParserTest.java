@@ -233,7 +233,7 @@ class LogParserTest {
     /**
      * スレッド判定の事前ふるいが、正規表現をそのまま呼んだ場合と同じ結果になること。
      *
-     * <p>{@code THREAD_HINT} は {@code ^main} 以外のすべての選択肢が {@code '-'} を含むため、
+     * <p>{@code THREAD_HINT} は {@code ^main(?:$|:)} 以外のすべての選択肢が {@code '-'} を含むため、
      * {@code '-'} が無く "main" でも始まらない文字列は正規表現を呼ばずに不一致と判定している。
      * その境界（main の大小文字、4 文字未満、ハイフンはあるが一致しない、
      * ハイフンが無い FQCN）で判定が変わらないことを確認する。
@@ -300,7 +300,7 @@ class LogParserTest {
      * <p>固定の期待値ではなく正規表現そのものと突き合わせるので、ふるい側のロジックを
      * 変えると落ちる。ただし乱数入力は文字集合の中からしか作られないため、
      * 正規表現側に新しい選択肢が足されたことは検出できない。そちらは
-     * {@link #threadHintAlternativesAllContainHyphen} で前提そのものを固定している。
+     * {@link #threadHintIsPinnedBecausePrefilterDependsOnIt} で前提そのものを固定している。
      */
     @Test
     void threadHintPrefilterEqualsRegex() {
