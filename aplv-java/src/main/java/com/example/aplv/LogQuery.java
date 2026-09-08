@@ -25,8 +25,11 @@ import com.example.aplv.LogIndex.EntryRow;
  * 並び順どおりに辿れるため、ページ送りは表示件数に比例した時間で返る。
  *
  * <p>レベル絞り込みも、単一レベルなら {@code idx_entries_level_ts} を並び順どおりに辿れる。
- * 複数レベルを {@code IN} で並べた場合だけは索引の並びを保てないため、SQLite は
- * {@code idx_entries_ts} を走査しながらレベルを都度判定する。
+ * 複数レベルを {@code IN} で並べた場合だけは、レベルごとに索引の別の範囲を読むことになり
+ * 全体の時刻順を保てないため並べ直しが入る（ヒット件数に比例。実測では 150 万件・
+ * 2 レベルで 9ms、3 レベルで 34ms）。どう並べ直すかは統計に基づく SQLite の判断で、
+ * {@code idx_entries_level_ts} を引いてソートすることも、{@code idx_entries_ts} を
+ * 時刻順に走査してレベルを都度判定することもある。
  */
 public final class LogQuery {
 

@@ -166,6 +166,8 @@ public final class LogIndex {
      *
      * <p>DDL は文ごとに確定するため、削除は作成をすべて終えてから行う。逆順だと
      * {@code CREATE} が失敗したときに level に効く索引が一つも無い状態が残ってしまう。
+     * 逆に削除だけが失敗すると両方が残り、複数レベル指定で幅の狭い方が選ばれて
+     * 遅くなることがあるが、結果は正しいままで次回の成功時に解消する。
      */
     static void ensureIndexes(Connection conn) throws SQLException {
         try (Statement st = conn.createStatement()) {
