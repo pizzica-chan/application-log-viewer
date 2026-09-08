@@ -35,7 +35,8 @@ public final class LogParser {
     /** 3 番目フィールド末尾とメッセージの区切り（{@code ] - message}）。 */
     private static final String FIELD3_END = "] - ";
 
-    private static final Pattern THREAD_HINT = Pattern.compile(
+    /** スレッド名らしさの判定。事前ふるいとの等価性を試験するためパッケージ可視。 */
+    static final Pattern THREAD_HINT = Pattern.compile(
             "(?:^main(?:$|:)|exec-\\d+|pool-\\d+-thread-\\d+|scheduler-\\d+"
                     + "|ajp-|http-nio-|https-nio-|catalina-|-exec-\\d+$)",
             Pattern.CASE_INSENSITIVE);
@@ -172,7 +173,7 @@ public final class LogParser {
      * <p>実測（90 万行、ヘッダ解析のみ）: 1.72 秒 → 0.25 秒。
      * 正規表現を一切呼ばない下限が 0.15 秒なので、ほぼ限界まで削れている。
      */
-    private static boolean looksLikeThread(String s) {
+    static boolean looksLikeThread(String s) {
         if (s.indexOf('-') < 0 && !s.regionMatches(true, 0, "main", 0, 4)) {
             return false;
         }

@@ -1,6 +1,6 @@
 ---
 description: インデックス・クエリまわりの性能を変更するときの進め方と、性能に関する記述の書き方
-globs: **/{LogIndex,LogQuery,IndexStore}.java
+globs: **/{LogIndex,LogQuery,IndexStore,LogParser}.java
 alwaysApply: false
 ---
 

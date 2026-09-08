@@ -19,7 +19,7 @@ Java 8 / JDK 内蔵 HTTP サーバ / SQLite インデックス。実装は `aplv
 `pom.xml` はリポジトリ直下ではなく `aplv-java/` にある。直下から実行するときは `-f` を付ける。
 
 ```bash
-mvn -f aplv-java/pom.xml test           # テスト（72 件）
+mvn -f aplv-java/pom.xml test           # テスト
 mvn -q -f aplv-java/pom.xml package     # 実行可能 JAR → aplv-java/target/aplv-java.jar
 java -jar aplv-java/target/aplv-java.jar --dir samples --port 8766
 ```

@@ -247,12 +247,21 @@ class LogParserTest {
         assertEquals("main", main.thread);
         assertEquals("com.example.Boot", main.logger);
 
-        // 大文字でも一致する（regionMatches は大小文字を無視する）
+        // '-' を含むので事前ふるいは indexOf('-') で通過する。ここで確認しているのは
+        // regionMatches ではなく THREAD_HINT 側の CASE_INSENSITIVE
         LogParser.ParsedLine upper = LogParser.parseLine(
                 "2026-06-15 00:00:01.000[com.example.Boot][INFO][MAIN:worker-3] - started");
         assertNotNull(upper);
         assertEquals("MAIN:worker-3", upper.thread);
         assertEquals("com.example.Boot", upper.logger);
+
+        // '-' が無く大文字で始まるスレッド名。事前ふるいの regionMatches(true, ...) を
+        // 通る唯一の経路で、大小文字を無視しないと thread と logger が入れ替わる
+        LogParser.ParsedLine upperNoHyphen = LogParser.parseLine(
+                "2026-06-15 00:00:01.000[Boot][INFO][MAIN] - x");
+        assertNotNull(upperNoHyphen);
+        assertEquals("MAIN", upperNoHyphen.thread);
+        assertEquals("Boot", upperNoHyphen.logger);
 
         // "main" で始まるが ^main(?:$|:) には一致しない。事前ふるいは通過し、
         // 正規表現が false を返す（ふるいは必要条件なので通す側に緩くてよい）
@@ -283,5 +292,71 @@ class LogParserTest {
         assertNotNull(neither);
         assertEquals("alpha", neither.thread);
         assertEquals("beta", neither.logger);
+    }
+
+    /**
+     * 事前ふるいが {@code THREAD_HINT} と常に同じ判定を返すこと（差分試験）。
+     *
+     * <p>固定の期待値ではなく正規表現そのものと突き合わせるので、ふるい側のロジックを
+     * 変えると落ちる。ただし乱数入力は文字集合の中からしか作られないため、
+     * 正規表現側に新しい選択肢が足されたことは検出できない。そちらは
+     * {@link #threadHintAlternativesAllContainHyphen} で前提そのものを固定している。
+     */
+    @Test
+    void threadHintPrefilterEqualsRegex() {
+        String[] realistic = {
+            "main", "MAIN", "Main:7", "main:12345", "mainThread", "ma", "", "-",
+            "http-nio-8080-exec-1", "https-nio-8443-exec-2", "ajp-nio-8009-exec-24",
+            "pool-1-thread-1", "scheduler-3", "catalina-exec-9", "worker-alpha",
+            "com.example.mapper.UserMapper.selectById", "com.example.web.HogeController",
+            "org.springframework.jdbc.core.JdbcTemplate", "Boot", "alpha", "beta",
+            "task-exec-7", "my-logger.Class", "exec-1", "EXEC-1", "AJP-nio-8009",
+        };
+        for (String s : realistic) {
+            assertEquals(LogParser.THREAD_HINT.matcher(s).find(), LogParser.looksLikeThread(s), s);
+        }
+
+        // ふるいの分岐（'-' の有無、main 始まりの大小文字、長さ 4 未満）を踏むよう
+        // 文字集合を絞ったランダム入力で突き合わせる
+        char[] alphabet = "mainMAIN-_.:$0123456789xyzXYZ ".toCharArray();
+        java.util.Random rnd = new java.util.Random(20260909L);
+        StringBuilder sb = new StringBuilder(16);
+        for (int i = 0; i < 200_000; i++) {
+            sb.setLength(0);
+            int len = rnd.nextInt(14);
+            for (int j = 0; j < len; j++) {
+                sb.append(alphabet[rnd.nextInt(alphabet.length)]);
+            }
+            String s = sb.toString();
+            assertEquals(LogParser.THREAD_HINT.matcher(s).find(), LogParser.looksLikeThread(s), s);
+        }
+    }
+
+    /**
+     * 事前ふるいの前提 —— {@code ^main(?:$|:)} 以外の選択肢がすべて {@code '-'} を含むこと。
+     *
+     * <p>{@link LogParser#looksLikeThread} は「{@code '-'} が無く "main" でも始まらない
+     * 文字列は一致しえない」という性質に依存している。{@code worker\d+} のように
+     * ハイフンを含まない選択肢が足されると、ふるいが黙って誤判定するようになる。
+     *
+     * <p>差分試験は乱数の文字集合の外にある単語を作れないためこれを検出できない。
+     * ここではパターン文字列そのものを見て前提を固定する。
+     */
+    @Test
+    void threadHintAlternativesAllContainHyphen() {
+        String pattern = LogParser.THREAD_HINT.pattern();
+        assertTrue(pattern.startsWith("(?:") && pattern.endsWith(")"),
+                "パターンの入れ物が変わった。ふるいの前提を見直すこと: " + pattern);
+        String body = pattern.substring(3, pattern.length() - 1);
+
+        String mainAlt = "^main(?:$|:)|";
+        assertTrue(body.startsWith(mainAlt),
+                "先頭の選択肢が変わった。ふるいの main 判定を見直すこと: " + body);
+
+        for (String alt : body.substring(mainAlt.length()).split("\\|")) {
+            assertTrue(alt.indexOf('-') >= 0,
+                    "ハイフンを含まない選択肢が追加されている。looksLikeThread の"
+                            + "事前ふるいが誤判定するので、ふるい側も直すこと: " + alt);
+        }
     }
 }
