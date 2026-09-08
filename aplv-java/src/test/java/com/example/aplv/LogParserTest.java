@@ -254,6 +254,14 @@ class LogParserTest {
         assertEquals("MAIN:worker-3", upper.thread);
         assertEquals("com.example.Boot", upper.logger);
 
+        // "main" で始まるが ^main(?:$|:) には一致しない。事前ふるいは通過し、
+        // 正規表現が false を返す（ふるいは必要条件なので通す側に緩くてよい）
+        LogParser.ParsedLine mainish = LogParser.parseLine(
+                "2026-06-15 00:00:01.000[mainThread][INFO][com.example.Svc] - ok");
+        assertNotNull(mainish);
+        assertEquals("mainThread", mainish.thread);
+        assertEquals("com.example.Svc", mainish.logger);
+
         // '-' を含むが THREAD_HINT には一致しない。事前ふるいを通過し正規表現が false を返す
         // ため、'.' の有無による判定に落ちて FQCN 側が logger になる
         LogParser.ParsedLine hyphen = LogParser.parseLine(
