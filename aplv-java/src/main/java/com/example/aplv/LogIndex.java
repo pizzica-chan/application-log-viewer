@@ -163,14 +163,17 @@ public final class LogIndex {
      * {@code idx_entries_level} の代わりになり、しかも時系列の並びをそのまま辿れる。
      * 幅の狭い {@code idx_entries_level} が残っていると SQLite がそちらを選び、
      * 並べ直しが入って遅くなることがあるため削除する。
+     *
+     * <p>DDL は文ごとに確定するため、削除は作成をすべて終えてから行う。逆順だと
+     * {@code CREATE} が失敗したときに level に効く索引が一つも無い状態が残ってしまう。
      */
     static void ensureIndexes(Connection conn) throws SQLException {
         try (Statement st = conn.createStatement()) {
-            st.execute("DROP INDEX IF EXISTS idx_entries_level");
             st.execute("CREATE INDEX IF NOT EXISTS idx_entries_ts "
                     + "ON entries(ts_millis, file_id, line_no)");
             st.execute("CREATE INDEX IF NOT EXISTS idx_entries_level_ts "
                     + "ON entries(level, ts_millis, file_id, line_no)");
+            st.execute("DROP INDEX IF EXISTS idx_entries_level");
         }
     }
 
@@ -569,12 +572,19 @@ public final class LogIndex {
         // 索引は全行を入れ終えてから作る。巨大トランザクションの中で作るとロールバック
         // ジャーナルがメモリを圧迫するため、いったん取込を確定してから作成する。
         conn.commit();
-        conn.setAutoCommit(true);
         try {
-            ensureIndexes(conn);
-            updateStatistics(conn);
-        } finally {
-            conn.setAutoCommit(false);
+            conn.setAutoCommit(true);
+            try {
+                ensureIndexes(conn);
+                updateStatistics(conn);
+            } finally {
+                conn.setAutoCommit(false);
+            }
+        } catch (SQLException e) {
+            // 取込は確定済みなので、ここで抜けると entries だけが DB に残り続ける。
+            // 他の失敗経路と同じく後始末してから投げ直す。
+            abortIncompleteBuild(conn);
+            throw e;
         }
 
         try (PreparedStatement ps = conn.prepareStatement(

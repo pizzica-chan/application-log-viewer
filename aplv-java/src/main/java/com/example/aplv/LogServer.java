@@ -279,7 +279,14 @@ public final class LogServer {
                         total = LogIndex.entryCount(newConn);
                         // 索引と統計は取込時にしか作らないため、再利用時はここで補う
                         // （旧バージョンが作った DB には新しい索引・統計が無い）。
-                        LogIndex.ensureIndexes(newConn);
+                        // 配信中の接続が長い検索でロックを握っていると SQLITE_BUSY に
+                        // なりうるが、既存の索引のままでも参照はできる（遅くなるだけ）ので、
+                        // updateStatistics と同様に失敗はロード成功を妨げないものとして扱う。
+                        try {
+                            LogIndex.ensureIndexes(newConn);
+                        } catch (SQLException e) {
+                            // 索引を張り直せなくても結果は正しいので無視する
+                        }
                         LogIndex.updateStatistics(newConn);
                         loadProgress.set(total);
                     }

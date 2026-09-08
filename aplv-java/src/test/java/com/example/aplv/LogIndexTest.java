@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>offset / limit によるページング</li>
  *   <li>SQL 押し下げ経路と全件走査経路が同一結果を返すこと</li>
  *   <li>取込後の索引構成と統計（旧構成からの移行を含む）</li>
+ *   <li>索引作成に失敗したときの後始末（中途半端な状態を残さないこと）</li>
  * </ul>
  *
  * <p>担保すること:
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>FTS 非対応環境でも grep が全件スキャンで同等の結果を返す</li>
  *   <li>正規表現の有無でクエリ経路が変わっても件数・並び・ページ境界が変わらない</li>
  *   <li>索引は取込後に作られ、参照時に必要な構成が揃っている</li>
+ *   <li>索引作成が失敗しても、レベル絞り込みに効く索引か再構築の余地のどちらかは残る</li>
  * </ul>
  */
 class LogIndexTest {
@@ -486,6 +489,73 @@ class LogIndexTest {
             LogQuery.Result r = LogQuery.queryLogs(conn, byLevel, 0, 10);
             assertEquals(2, r.total);
             assertEquals(Arrays.asList("two", "four"), messagesOf(r.page));
+        }
+    }
+
+    /**
+     * 索引の作成を失敗させる。
+     *
+     * <p>同名のテーブルを先に作っておくと {@code CREATE INDEX IF NOT EXISTS} は
+     * 「同名のテーブルが既にある」で失敗する。SQLITE_BUSY / SQLITE_FULL を再現せずに
+     * 「作成が失敗したときの後始末」だけを検証できる。
+     */
+    private void blockIndexCreation(Connection conn, String indexName) throws Exception {
+        try (java.sql.Statement st = conn.createStatement()) {
+            st.execute("CREATE TABLE " + indexName + " (blocker INTEGER)");
+        }
+    }
+
+    /**
+     * 索引の張り直しが途中で失敗しても、レベル絞り込みに効く索引が消えないこと。
+     *
+     * <p>DDL は文ごとに確定するため、削除を作成より先に置くと CREATE が失敗した時点で
+     * 「level に効く索引が一つも無い」状態が残ってしまう。
+     */
+    @Test
+    void ensureIndexesKeepsLevelIndexWhenCreateFails(@TempDir Path tmp) throws Exception {
+        Path log = writeFiveLines(tmp);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+
+            // 旧バージョン相当の構成に戻したうえで、複合索引の作成を失敗させる。
+            try (java.sql.Statement st = conn.createStatement()) {
+                st.execute("DROP INDEX idx_entries_level_ts");
+                st.execute("CREATE INDEX idx_entries_level ON entries(level)");
+            }
+            blockIndexCreation(conn, "idx_entries_level_ts");
+
+            assertThrows(java.sql.SQLException.class, () -> LogIndex.ensureIndexes(conn));
+
+            assertTrue(indexNames(conn).contains("idx_entries_level"),
+                    "複合索引を作れなかったときは、幅の狭い方を消さずに残すこと");
+
+            // 索引が残っているので検索結果も従来どおり。
+            QueryFilter byLevel = new QueryFilter();
+            byLevel.levels = QueryFilter.parseLevelFilter("ERROR");
+            LogQuery.Result r = LogQuery.queryLogs(conn, byLevel, 0, 10);
+            assertEquals(Arrays.asList("two", "four"), messagesOf(r.page));
+        }
+    }
+
+    /**
+     * 取込を確定した後で索引作成に失敗しても、entries を残さず後始末すること。
+     *
+     * <p>ここを素通りすると数百 MB の行が fingerprint 無しで DB に残る。
+     * 他の失敗経路と同じく、次回に再構築される状態へ戻す必要がある。
+     */
+    @Test
+    void buildAbortsWhenIndexCreationFails(@TempDir Path tmp) throws Exception {
+        Path log = writeFiveLines(tmp);
+        List<Path> paths = Collections.singletonList(log);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            blockIndexCreation(conn, "idx_entries_level_ts");
+
+            assertThrows(java.sql.SQLException.class,
+                    () -> LogIndex.buildIndex(conn, paths, null, false));
+
+            assertEquals(0, LogIndex.entryCount(conn), "取り込んだ行を残さないこと");
+            assertTrue(LogIndex.needsRebuild(conn, paths, false),
+                    "fingerprint を消して次回に再構築させること");
         }
     }
 }
