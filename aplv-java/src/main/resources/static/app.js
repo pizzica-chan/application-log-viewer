@@ -443,6 +443,7 @@ function updateMeta(data) {
     metaRange = { first: null, last: null };
     els.meta.textContent = "ログファイル未読み込み — ディレクトリを選択してください";
     els.fileList.textContent = "";
+    els.fileList.title = "";
     updateParseWarning({});
     setBackgroundLoading(false);
     setLoadingUi(false);
@@ -454,6 +455,7 @@ function updateMeta(data) {
     metaRange = { first: null, last: null };
     els.meta.textContent = `読み込みエラー: ${data.load_error}`;
     els.fileList.textContent = data.files.join(" | ");
+    els.fileList.title = data.files.join("\n");
     updateParseWarning({});
     setBackgroundLoading(false);
     setLoadingUi(false);
@@ -466,6 +468,7 @@ function updateMeta(data) {
     const message = `ログを読み込み中... ${data.load_progress.toLocaleString()} 行`;
     els.meta.textContent = `${message} / ファイル ${data.files.length} 件`;
     els.fileList.textContent = data.files.join(" | ");
+    els.fileList.title = data.files.join("\n");
     updateParseWarning({});
     setBackgroundLoading(true, message);
     setLoadingUi(true);
@@ -478,6 +481,7 @@ function updateMeta(data) {
     `${data.total.toLocaleString()} 行 / ファイル ${data.files.length} 件` +
     (data.first ? ` / ${data.first} 〜 ${data.last}` : "");
   els.fileList.textContent = data.files.join(" | ");
+  els.fileList.title = data.files.join("\n");
   updateParseWarning(data);
   setBackgroundLoading(false);
   setLoadingUi(false);
