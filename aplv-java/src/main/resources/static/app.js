@@ -38,6 +38,9 @@ const els = {
   resultCount: document.getElementById("result-count"),
   highlight: document.getElementById("highlight"),
   fullPath: document.getElementById("full-path"),
+  parseWarningDetails: document.getElementById("parse-warning-details"),
+  filtersFields: document.getElementById("filters-fields"),
+  filtersToggle: document.getElementById("filters-toggle"),
   savedSearches: document.getElementById("saved-searches"),
   savedSearchesDialog: document.getElementById("saved-searches-dialog"),
   savedSearchName: document.getElementById("saved-search-name"),
@@ -424,6 +427,7 @@ function updateParseWarning(data) {
     return;
   }
   els.parseWarning.hidden = false;
+  els.parseWarningDetails.open = false;
   els.parseWarningText.textContent =
     `${skipped.toLocaleString()} 行を Java アプリログ形式として認識できませんでした` +
     "（先頭の孤立行など。スタックトレース等の継続行は除く）。";
@@ -906,6 +910,37 @@ els.detailFilterSameContext.addEventListener("click", () => filterBySameSourceAn
 els.regexSamples.addEventListener("click", () => {
   els.regexSamplesDialog.showModal();
 });
+
+/**
+ * 検索条件欄の折りたたみ。フィールド部分（#filters-fields）だけを hidden にし、
+ * ツールバー・検索/リセットボタン・範囲ヒントは常に表示のままにする。
+ * hidden で隠すだけなので、折りたたんでいても入力値は DOM 上に残ったままで、
+ * 検索ボタンを押したときに送られるパラメータは開いているときと変わらない。
+ */
+const FILTERS_COLLAPSED_KEY = "aplv.filtersCollapsed";
+
+function setFiltersCollapsed(collapsed) {
+  els.filtersFields.hidden = collapsed;
+  els.filtersToggle.textContent = collapsed ? "展開する" : "折りたたむ";
+  els.filtersToggle.setAttribute("aria-expanded", String(!collapsed));
+}
+
+els.filtersToggle.addEventListener("click", () => {
+  const collapsed = !els.filtersFields.hidden;
+  setFiltersCollapsed(collapsed);
+  try {
+    localStorage.setItem(FILTERS_COLLAPSED_KEY, collapsed ? "1" : "");
+  } catch (e) {
+    // ストレージが使えなくても表示の切り替え自体は継続する
+  }
+});
+
+// 前回の開閉状態を復元する（ブラウザ単位。読めない/壊れていても既定の展開状態にする）
+try {
+  setFiltersCollapsed(localStorage.getItem(FILTERS_COLLAPSED_KEY) === "1");
+} catch (e) {
+  setFiltersCollapsed(false);
+}
 
 els.highlight.addEventListener("input", applyRowHighlights);
 els.savedSearches.addEventListener("click", () => {

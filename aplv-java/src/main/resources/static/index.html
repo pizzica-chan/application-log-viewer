@@ -11,8 +11,10 @@
     <h1>Application Log Viewer</h1>
     <p id="meta">読み込み中...</p>
     <div id="parse-warning" class="parse-warning" hidden>
-      <p id="parse-warning-text"></p>
-      <ul id="parse-warning-samples" class="parse-warning-samples"></ul>
+      <details id="parse-warning-details">
+        <summary id="parse-warning-text"></summary>
+        <ul id="parse-warning-samples" class="parse-warning-samples"></ul>
+      </details>
     </div>
   </header>
 
@@ -33,7 +35,9 @@
       <span class="filters-toolbar-label">検索条件</span>
       <button type="button" id="regex-samples" class="chip">正規表現サンプル</button>
       <button type="button" id="saved-searches" class="chip">保存した検索条件</button>
+      <button type="button" id="filters-toggle" class="chip" aria-expanded="true" aria-controls="filters-fields">折りたたむ</button>
     </div>
+    <div id="filters-fields" class="filters-fields">
     <label>
       レベル
       <input id="level" placeholder="ERROR / WARN,ERROR">
@@ -87,6 +91,7 @@
         <button type="button" id="range-last-24h" class="chip" disabled>末尾24時間</button>
         <button type="button" id="range-clear" class="chip">クリア</button>
       </div>
+    </div>
     </div>
     <button id="search">検索</button>
     <button id="reset" type="button">リセット</button>

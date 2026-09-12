@@ -73,9 +73,10 @@ header h1 {
   font-size: 0.8125rem;
 }
 
-.parse-warning p {
+.parse-warning summary {
   margin: 0;
   color: var(--warn);
+  cursor: pointer;
 }
 
 .parse-warning-samples {
@@ -159,8 +160,28 @@ header h1 {
   background: var(--panel);
 }
 
+/*
+ * フィールド部分（#filters-fields）はここで独自の flex コンテナにする。折りたたみ時は
+ * 丸ごと hidden にするため、常時表示のツールバー・検索/リセットボタンとは別枠にした。
+ */
+.filters-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.45rem 0.7rem;
+  flex: 1 0 100%;
+}
+
+/*
+ * display を明示したセレクタは [hidden] の UA スタイル（display: none）より
+ * オリジンの優先順位で勝ってしまい、hidden 属性が効かなくなる。明示的に打ち消す。
+ */
+.filters-fields[hidden] {
+  display: none;
+}
+
 /* テキスト項目は詰めて並べ、幅が足りなければ折り返す */
-.filters > label {
+.filters-fields > label {
   flex: 1 1 8.5rem;
   min-width: 8.5rem;
   max-width: 13rem;
