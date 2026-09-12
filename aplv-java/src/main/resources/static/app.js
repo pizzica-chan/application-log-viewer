@@ -621,11 +621,14 @@ function loadSavedSearches() {
   }
 }
 
+/** 保存に失敗した場合は false を返す。呼び出し側は入力欄のクリアや再描画を行わない。 */
 function writeSavedSearches(list) {
   try {
     localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(list));
+    return true;
   } catch (e) {
     alert("検索条件の保存に失敗しました（ブラウザのストレージが使用できません）。");
+    return false;
   }
 }
 
@@ -643,7 +646,7 @@ function applyFilterFields(fields) {
     if (el) el.value = value;
   }
   // クイック範囲ボタンが設定する秒未満の精度は保存対象外。日時欄の値（分単位）で
-  // 検索すれば同じ範囲が再現されるため、古い厳密範囲は捨てる。
+  // 検索すれば同じ分の範囲になるため、古い厳密範囲は捨てる（秒精度までは再現しない）。
   clearExactQueryRange();
   updateRangeUi();
 }
@@ -727,7 +730,7 @@ function saveCurrentSearch() {
       fields,
     });
   }
-  writeSavedSearches(list);
+  if (!writeSavedSearches(list)) return;
   els.savedSearchName.value = "";
   renderSavedSearchList();
 }
@@ -917,7 +920,11 @@ els.savedSearchSave.addEventListener("click", saveCurrentSearch);
  */
 els.savedSearchName.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
+  if (e.isComposing || e.keyCode === 229) return; // IME確定のEnterでは保存しない
   e.preventDefault();
+  // document 側の Enter ハンドラ（検索の実行）まで伝播すると、保存の裏で
+  // 検索も走ってしまう（対象が INPUT であること以外の条件を見ていないため）。
+  e.stopPropagation();
   saveCurrentSearch();
 });
 els.fullPath.addEventListener("change", applySourceDisplay);
