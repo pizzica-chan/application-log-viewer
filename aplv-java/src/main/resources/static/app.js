@@ -704,6 +704,34 @@ function renderSavedSearchList() {
   }
 }
 
+/** 現在の検索条件欄の内容に名前を付けて保存する。同名があれば確認のうえ上書きする。 */
+function saveCurrentSearch() {
+  const name = els.savedSearchName.value.trim();
+  if (!name) {
+    alert("名前を入力してください。");
+    return;
+  }
+  const list = loadSavedSearches();
+  const existing = list.find((s) => s.name === name);
+  if (existing && !confirm(`「${name}」は既に保存されています。上書きしますか？`)) return;
+  const fields = collectFilterFields();
+  const savedAt = new Date().toISOString();
+  if (existing) {
+    existing.fields = fields;
+    existing.savedAt = savedAt;
+  } else {
+    list.push({
+      id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
+      name,
+      savedAt,
+      fields,
+    });
+  }
+  writeSavedSearches(list);
+  els.savedSearchName.value = "";
+  renderSavedSearchList();
+}
+
 function addCell(tr, content, options = {}) {
   const td = document.createElement("td");
   const text = content == null || content === "" ? "-" : String(content);
@@ -881,31 +909,16 @@ els.savedSearches.addEventListener("click", () => {
   renderSavedSearchList();
   els.savedSearchesDialog.showModal();
 });
-els.savedSearchSave.addEventListener("click", () => {
-  const name = els.savedSearchName.value.trim();
-  if (!name) {
-    alert("名前を入力してください。");
-    return;
-  }
-  const list = loadSavedSearches();
-  const existing = list.find((s) => s.name === name);
-  if (existing && !confirm(`「${name}」は既に保存されています。上書きしますか？`)) return;
-  const fields = collectFilterFields();
-  const savedAt = new Date().toISOString();
-  if (existing) {
-    existing.fields = fields;
-    existing.savedAt = savedAt;
-  } else {
-    list.push({
-      id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
-      name,
-      savedAt,
-      fields,
-    });
-  }
-  writeSavedSearches(list);
-  els.savedSearchName.value = "";
-  renderSavedSearchList();
+els.savedSearchSave.addEventListener("click", saveCurrentSearch);
+/*
+ * ダイアログは form method="dialog" なので、名前欄で Enter を押すと暗黙送信が
+ * 走って「閉じる」が発火し、保存されないままダイアログが閉じる。Enter でも
+ * 保存できるように既定動作を止める。
+ */
+els.savedSearchName.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  saveCurrentSearch();
 });
 els.fullPath.addEventListener("change", applySourceDisplay);
 // リロードでチェック状態が復元されることがあるので、初期表示でも body のクラスを合わせる
