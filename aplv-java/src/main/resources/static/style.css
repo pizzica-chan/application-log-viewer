@@ -104,14 +104,23 @@ header h1 {
 }
 
 .filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.45rem 0.7rem;
+  padding: 0.7rem 1.25rem;
   background: var(--panel);
 }
 
+/* テキスト項目は詰めて並べ、幅が足りなければ折り返す */
+.filters > label {
+  flex: 1 1 8.5rem;
+  min-width: 8.5rem;
+  max-width: 13rem;
+}
+
 .filters-toolbar {
-  grid-column: 1 / -1;
+  flex: 1 0 100%;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -125,10 +134,11 @@ header h1 {
 }
 
 .datetime-filter {
-  grid-column: 1 / -1;
+  flex: 1 0 100%;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.85rem;
   max-width: 100%;
 }
 
@@ -136,21 +146,22 @@ header h1 {
 .point-label {
   font-size: 0.75rem;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .datetime-range {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem 1.25rem;
+  align-items: center;
+  gap: 0.4rem 0.85rem;
   width: fit-content;
   max-width: 100%;
 }
 
 .datetime-point {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.35rem;
   flex: 0 0 auto;
 }
 
@@ -162,23 +173,24 @@ header h1 {
 }
 
 .datetime-inputs input[type="date"] {
-  width: 10.5rem;
-  min-width: 10.5rem;
-  max-width: 10.5rem;
+  width: 9.25rem;
+  min-width: 9.25rem;
+  max-width: 9.25rem;
   font-variant-numeric: tabular-nums;
 }
 
 .datetime-inputs input[type="time"] {
-  width: 6.25rem;
-  min-width: 6.25rem;
-  max-width: 6.25rem;
+  width: 5.5rem;
+  min-width: 5.5rem;
+  max-width: 5.5rem;
   font-variant-numeric: tabular-nums;
 }
 
 .datetime-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  align-items: center;
+  gap: 0.3rem;
   width: fit-content;
   max-width: 100%;
 }
@@ -205,6 +217,7 @@ header h1 {
 
 .range-hint {
   margin: 0;
+  align-self: center;
   font-size: 0.75rem;
   color: var(--muted);
 }
@@ -212,13 +225,13 @@ header h1 {
 label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.15rem;
   font-size: 0.75rem;
   color: var(--muted);
 }
 
 input {
-  padding: 0.45rem 0.55rem;
+  padding: 0.35rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
@@ -227,7 +240,7 @@ input {
 
 button {
   align-self: end;
-  padding: 0.55rem 1rem;
+  padding: 0.4rem 1rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--accent);
@@ -516,9 +529,9 @@ dialog pre {
   }
 
   .datetime-inputs {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    width: 100%;
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .datetime-inputs input[type="date"] {
