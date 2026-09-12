@@ -38,6 +38,12 @@ const els = {
   resultCount: document.getElementById("result-count"),
   highlight: document.getElementById("highlight"),
   fullPath: document.getElementById("full-path"),
+  savedSearches: document.getElementById("saved-searches"),
+  savedSearchesDialog: document.getElementById("saved-searches-dialog"),
+  savedSearchName: document.getElementById("saved-search-name"),
+  savedSearchSave: document.getElementById("saved-search-save"),
+  savedSearchList: document.getElementById("saved-search-list"),
+  savedSearchEmpty: document.getElementById("saved-search-empty"),
   pageInfo: document.getElementById("page-info"),
   prev: document.getElementById("prev"),
   next: document.getElementById("next"),
@@ -598,6 +604,106 @@ function applySourceDisplay() {
   }
 }
 
+/**
+ * 検索条件の保存・呼び出し（localStorage、ブラウザ単位）。
+ * ハイライトやフルパス表示など表示設定は対象外。検索条件欄（.filters）の
+ * input/select を id -> value のマップとして保存し、適用時は同じ id の要素へ書き戻す。
+ */
+const SAVED_SEARCHES_KEY = "aplv.savedSearches";
+
+function loadSavedSearches() {
+  try {
+    const raw = localStorage.getItem(SAVED_SEARCHES_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeSavedSearches(list) {
+  try {
+    localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(list));
+  } catch (e) {
+    alert("検索条件の保存に失敗しました（ブラウザのストレージが使用できません）。");
+  }
+}
+
+function collectFilterFields() {
+  const fields = {};
+  for (const el of document.querySelectorAll(".filters input[id], .filters select[id]")) {
+    fields[el.id] = el.value;
+  }
+  return fields;
+}
+
+function applyFilterFields(fields) {
+  for (const [id, value] of Object.entries(fields || {})) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+  }
+  // クイック範囲ボタンが設定する秒未満の精度は保存対象外。日時欄の値（分単位）で
+  // 検索すれば同じ範囲が再現されるため、古い厳密範囲は捨てる。
+  clearExactQueryRange();
+  updateRangeUi();
+}
+
+function formatSavedAt(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+}
+
+function renderSavedSearchList() {
+  const list = loadSavedSearches().sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
+  els.savedSearchList.innerHTML = "";
+  els.savedSearchEmpty.hidden = list.length > 0;
+  for (const saved of list) {
+    const li = document.createElement("li");
+    li.className = "saved-search-item";
+
+    const info = document.createElement("div");
+    info.className = "saved-search-info";
+    const name = document.createElement("span");
+    name.className = "saved-search-name";
+    name.textContent = saved.name;
+    name.title = saved.name;
+    const date = document.createElement("span");
+    date.className = "saved-search-date";
+    date.textContent = formatSavedAt(saved.savedAt);
+    info.appendChild(name);
+    info.appendChild(date);
+
+    const buttons = document.createElement("div");
+    buttons.className = "saved-search-buttons";
+    const applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.textContent = "適用";
+    applyBtn.addEventListener("click", () => {
+      applyFilterFields(saved.fields);
+      els.savedSearchesDialog.close();
+      offset = 0;
+      loadLogs();
+    });
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "saved-search-delete";
+    deleteBtn.textContent = "削除";
+    deleteBtn.addEventListener("click", () => {
+      if (!confirm(`「${saved.name}」を削除しますか？`)) return;
+      writeSavedSearches(loadSavedSearches().filter((s) => s.id !== saved.id));
+      renderSavedSearchList();
+    });
+    buttons.appendChild(applyBtn);
+    buttons.appendChild(deleteBtn);
+
+    li.appendChild(info);
+    li.appendChild(buttons);
+    els.savedSearchList.appendChild(li);
+  }
+}
+
 function addCell(tr, content, options = {}) {
   const td = document.createElement("td");
   const text = content == null || content === "" ? "-" : String(content);
@@ -771,6 +877,36 @@ els.regexSamples.addEventListener("click", () => {
 });
 
 els.highlight.addEventListener("input", applyRowHighlights);
+els.savedSearches.addEventListener("click", () => {
+  renderSavedSearchList();
+  els.savedSearchesDialog.showModal();
+});
+els.savedSearchSave.addEventListener("click", () => {
+  const name = els.savedSearchName.value.trim();
+  if (!name) {
+    alert("名前を入力してください。");
+    return;
+  }
+  const list = loadSavedSearches();
+  const existing = list.find((s) => s.name === name);
+  if (existing && !confirm(`「${name}」は既に保存されています。上書きしますか？`)) return;
+  const fields = collectFilterFields();
+  const savedAt = new Date().toISOString();
+  if (existing) {
+    existing.fields = fields;
+    existing.savedAt = savedAt;
+  } else {
+    list.push({
+      id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
+      name,
+      savedAt,
+      fields,
+    });
+  }
+  writeSavedSearches(list);
+  els.savedSearchName.value = "";
+  renderSavedSearchList();
+});
 els.fullPath.addEventListener("change", applySourceDisplay);
 // リロードでチェック状態が復元されることがあるので、初期表示でも body のクラスを合わせる
 applySourceDisplay();

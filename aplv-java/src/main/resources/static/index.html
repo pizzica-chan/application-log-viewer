@@ -32,6 +32,7 @@
     <div class="filters-toolbar">
       <span class="filters-toolbar-label">検索条件</span>
       <button type="button" id="regex-samples" class="chip">正規表現サンプル</button>
+      <button type="button" id="saved-searches" class="chip">保存した検索条件</button>
     </div>
     <label>
       レベル
@@ -242,6 +243,21 @@
         </tbody>
       </table>
       <button type="submit">閉じる</button>
+    </form>
+  </dialog>
+
+  <dialog id="saved-searches-dialog">
+    <form method="dialog" class="saved-searches-form">
+      <h2>保存した検索条件</h2>
+      <div class="saved-search-save">
+        <input id="saved-search-name" placeholder="名前を付けて保存" maxlength="100">
+        <button type="button" id="saved-search-save">現在の条件を保存</button>
+      </div>
+      <ul id="saved-search-list" class="saved-search-list"></ul>
+      <p id="saved-search-empty" class="saved-search-empty" hidden>保存した検索条件はまだありません。</p>
+      <div class="saved-searches-actions">
+        <button type="submit">閉じる</button>
+      </div>
     </form>
   </dialog>
 
