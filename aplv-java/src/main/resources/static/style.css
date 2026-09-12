@@ -328,6 +328,28 @@ button {
   min-width: 0;
 }
 
+/* チェックボックスとラベルを 1 行に並べる小さなトグル */
+.toggle-input {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 全体の input 指定（padding・ボーダー）はチェックボックスには効かせない */
+.toggle-input input[type="checkbox"] {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  accent-color: var(--accent);
+}
+
 .pager {
   display: flex;
   align-items: center;
@@ -452,8 +474,17 @@ td.source {
   max-width: 520px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: Consolas, "Courier New", monospace;
   font-size: 0.75rem;
+}
+
+/*
+ * フルパス表示では列幅の上限を外す。省略されてはフルパスにした意味がないので、
+ * 収まらないぶんは一覧を横スクロールさせる。
+ */
+body.show-full-path td.source {
+  max-width: none;
 }
 
 dialog {

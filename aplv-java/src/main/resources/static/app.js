@@ -37,6 +37,7 @@ const els = {
   rows: document.getElementById("rows"),
   resultCount: document.getElementById("result-count"),
   highlight: document.getElementById("highlight"),
+  fullPath: document.getElementById("full-path"),
   pageInfo: document.getElementById("page-info"),
   prev: document.getElementById("prev"),
   next: document.getElementById("next"),
@@ -573,6 +574,30 @@ function formatSourceLabel(source) {
   return parts.slice(-2).join(sep);
 }
 
+/**
+ * ログファイル列の表示文字列。既定は末尾 2 要素だけの短縮表示で、
+ * 「フルパス表示」を入れると絶対パスをそのまま出す。
+ */
+function sourceCellText(item) {
+  const path =
+    els.fullPath.checked && item.source ? item.source : formatSourceLabel(item.source);
+  return path + ":" + item.line_no;
+}
+
+/**
+ * ログファイル列だけを描き替える。検索をやり直さずに切り替えたいので
+ * 行は作り直さない。フルパスのときは列幅の上限を外す（body のクラスで CSS 側を切り替え）。
+ */
+function applySourceDisplay() {
+  document.body.classList.toggle("show-full-path", els.fullPath.checked);
+  const rows = els.rows.querySelectorAll("tr");
+  for (let i = 0; i < rows.length; i += 1) {
+    const item = lastPageItems[i];
+    const td = rows[i].querySelector("td.source");
+    if (item && td) td.textContent = sourceCellText(item);
+  }
+}
+
 function addCell(tr, content, options = {}) {
   const td = document.createElement("td");
   const text = content == null || content === "" ? "-" : String(content);
@@ -631,7 +656,7 @@ async function loadLogs() {
       });
       addCell(tr, item.thread, { title: item.thread });
       addCell(tr, item.message, { className: "message", title: item.message });
-      addCell(tr, formatSourceLabel(item.source) + ":" + item.line_no, {
+      addCell(tr, sourceCellText(item), {
         className: "source",
         title: item.source + ":" + item.line_no,
       });
@@ -746,6 +771,9 @@ els.regexSamples.addEventListener("click", () => {
 });
 
 els.highlight.addEventListener("input", applyRowHighlights);
+els.fullPath.addEventListener("change", applySourceDisplay);
+// リロードでチェック状態が復元されることがあるので、初期表示でも body のクラスを合わせる
+applySourceDisplay();
 
 els.prev.addEventListener("click", () => {
   offset = Math.max(0, offset - currentPageLimit);
