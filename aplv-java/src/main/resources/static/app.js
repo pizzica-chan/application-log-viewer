@@ -654,7 +654,6 @@ function applyFilterFields(fields) {
   // 検索すれば同じ分の範囲になるため、古い厳密範囲は捨てる（秒精度までは再現しない）。
   clearExactQueryRange();
   updateRangeUi();
-  updateFiltersSummary();
 }
 
 function formatSavedAt(iso) {
@@ -752,6 +751,10 @@ function addCell(tr, content, options = {}) {
 }
 
 async function loadLogs() {
+  // 検索条件を変える経路（リセット・保存済み条件の適用・詳細ダイアログの絞り込み・
+  // 統計からの絞り込み）はすべてここを通る。呼び出し側を数え上げると漏れるので、
+  // 件数表示の更新はこの 1 箇所に集約する。
+  updateFiltersSummary();
   const pageLimit = getPageLimit();
   const seq = (logsRequestSeq += 1);
   pushLoading("ログを検索中...");
@@ -859,7 +862,6 @@ function resetFilters() {
   }
   els.pageLimit.value = String(DEFAULT_PAGE_LIMIT);
   clearDatetimeFields();
-  updateFiltersSummary();
   offset = 0;
   loadLogs();
 }
@@ -982,11 +984,12 @@ els.savedSearchSave.addEventListener("click", saveCurrentSearch);
  */
 els.savedSearchName.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
-  if (e.isComposing || e.keyCode === 229) return; // IME確定のEnterでは保存しない
-  e.preventDefault();
   // document 側の Enter ハンドラ（検索の実行）まで伝播すると、保存の裏で
   // 検索も走ってしまう（対象が INPUT であること以外の条件を見ていないため）。
+  // IME 確定の Enter でも同じなので、保存しない場合も伝播だけは止める。
   e.stopPropagation();
+  if (e.isComposing || e.keyCode === 229) return; // IME 確定の Enter では保存しない
+  e.preventDefault();
   saveCurrentSearch();
 });
 els.fullPath.addEventListener("change", applySourceDisplay);
