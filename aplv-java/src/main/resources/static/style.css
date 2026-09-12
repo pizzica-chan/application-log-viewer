@@ -180,6 +180,17 @@ header h1 {
   display: none;
 }
 
+/*
+ * 折りたたみ中に出す、有効な条件の件数。折りたたむと何で絞り込んでいるかが
+ * 見えなくなるため、件数だけでも常に分かるようにしておく。
+ * display は指定しない（指定すると上と同じ理由で hidden 属性が効かなくなる）。
+ */
+.filters-summary {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* テキスト項目は詰めて並べ、幅が足りなければ折り返す */
 .filters-fields > label {
   flex: 1 1 8.5rem;

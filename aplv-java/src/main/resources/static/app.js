@@ -41,6 +41,7 @@ const els = {
   parseWarningDetails: document.getElementById("parse-warning-details"),
   filtersFields: document.getElementById("filters-fields"),
   filtersToggle: document.getElementById("filters-toggle"),
+  filtersSummary: document.getElementById("filters-summary"),
   savedSearches: document.getElementById("saved-searches"),
   savedSearchesDialog: document.getElementById("saved-searches-dialog"),
   savedSearchName: document.getElementById("saved-search-name"),
@@ -653,6 +654,7 @@ function applyFilterFields(fields) {
   // 検索すれば同じ分の範囲になるため、古い厳密範囲は捨てる（秒精度までは再現しない）。
   clearExactQueryRange();
   updateRangeUi();
+  updateFiltersSummary();
 }
 
 function formatSavedAt(iso) {
@@ -857,6 +859,7 @@ function resetFilters() {
   }
   els.pageLimit.value = String(DEFAULT_PAGE_LIMIT);
   clearDatetimeFields();
+  updateFiltersSummary();
   offset = 0;
   loadLogs();
 }
@@ -919,10 +922,34 @@ els.regexSamples.addEventListener("click", () => {
  */
 const FILTERS_COLLAPSED_KEY = "aplv.filtersCollapsed";
 
+/**
+ * 有効な検索条件の数。折りたたむと何で絞り込んでいるか見えなくなるため、
+ * 件数だけは常に出す。期間は入力欄が 4 つあるが、条件としては 1 つと数える。
+ * 表示件数（page-limit）は絞り込み条件ではないので数えない。
+ */
+function countActiveFilters() {
+  const datetimeIds = ["since-date", "since-time", "until-date", "until-time"];
+  let count = 0;
+  for (const el of document.querySelectorAll(".filters input[id], .filters select[id]")) {
+    if (el.id === "page-limit" || datetimeIds.indexOf(el.id) >= 0) continue;
+    if (el.value.trim()) count += 1;
+  }
+  if (els.sinceDate.value || els.untilDate.value) count += 1;
+  return count;
+}
+
+/** 件数表示を現在の入力に合わせる。折りたたんでいるときだけ表示する。 */
+function updateFiltersSummary() {
+  const count = countActiveFilters();
+  els.filtersSummary.textContent = count > 0 ? `条件 ${count} 件` : "条件なし";
+  els.filtersSummary.hidden = !els.filtersFields.hidden;
+}
+
 function setFiltersCollapsed(collapsed) {
   els.filtersFields.hidden = collapsed;
   els.filtersToggle.textContent = collapsed ? "展開する" : "折りたたむ";
   els.filtersToggle.setAttribute("aria-expanded", String(!collapsed));
+  updateFiltersSummary();
 }
 
 els.filtersToggle.addEventListener("click", () => {
