@@ -27,6 +27,10 @@ import java.util.List;
  *                  ^          ^  ^
  *                  10         19 23
  * </pre>
+ *
+ * <p>{@link #TOMCAT_JULI} だけは日付の並びが違い（{@code dd-MMM-yyyy}）、
+ * タイムスタンプが 24 文字になるため専用の解析を持つ。月名が入るので位置 4 が
+ * 数字の区切りにならず、他の 4 書式と取り違えることはない。</p>
  */
 public enum LogFormat {
 
@@ -49,7 +53,14 @@ public enum LogFormat {
      * 日付と時刻を {@code T} で区切る形。本文の並びは {@link #LOGBACK} と同じ。
      * {@code 2026-06-15T00:19:11.705 INFO [main] com.example.Hoge - Message}
      */
-    ISO8601("iso8601", "ISO8601（T 区切り）");
+    ISO8601("iso8601", "ISO8601（T 区切り）"),
+
+    /**
+     * Tomcat の {@code catalina.out}（JULI の OneLineFormatter）。
+     * 日付が {@code dd-MMM-yyyy} で、ロガーとメッセージの区切りが空白 1 つになる。
+     * {@code 15-Jun-2026 00:19:11.705 INFO [main] org.apache.catalina.startup.Catalina.start Message}
+     */
+    TOMCAT_JULI("tomcat-juli", "Tomcat catalina.out（JULI）");
 
     /** 自動判定でサンプリングする行数。空行・継続行も含めて数える。 */
     static final int DETECT_SAMPLE_LINES = 500;

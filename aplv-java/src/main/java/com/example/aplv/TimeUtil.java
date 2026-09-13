@@ -14,6 +14,50 @@ public final class TimeUtil {
 
     private static final long MILLIS_PER_DAY = 86_400_000L;
 
+    /** JULI が使う月名（{@code dd-MMM-yyyy} の MMM）。索引 +1 が月番号。 */
+    private static final String[] MONTHS = {
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+    /**
+     * Tomcat JULI の {@code dd-MMM-yyyy HH:mm:ss.SSS} を epoch millis へ解析する。
+     *
+     * <p>月名は英語 3 文字（大文字小文字は問わない）。他の書式と同じく暦の値をそのまま扱い、
+     * タイムゾーン変換はしない。
+     *
+     * @return 解析できない場合は {@link Long#MIN_VALUE}
+     */
+    public static long parseJuliTimestamp(byte[] buf, int off) {
+        int day = digit2(buf, off);
+        int month = monthNumber(buf, off + 3);
+        int year = digit4(buf, off + 7);
+        int hour = digit2(buf, off + 12);
+        int min = digit2(buf, off + 15);
+        int sec = digit2(buf, off + 18);
+        int milli = digit3(buf, off + 21);
+        if (day < 0 || month < 0 || year < 0 || hour < 0 || min < 0 || sec < 0 || milli < 0) {
+            return Long.MIN_VALUE;
+        }
+        return toMillis(year, month, day, hour, min, sec, milli);
+    }
+
+    /** 英語 3 文字の月名を 1〜12 へ。未知なら -1。 */
+    private static int monthNumber(byte[] b, int off) {
+        for (int i = 0; i < MONTHS.length; i++) {
+            String m = MONTHS[i];
+            if (equalsIgnoreCaseAscii(b[off], m.charAt(0))
+                    && equalsIgnoreCaseAscii(b[off + 1], m.charAt(1))
+                    && equalsIgnoreCaseAscii(b[off + 2], m.charAt(2))) {
+                return i + 1;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean equalsIgnoreCaseAscii(byte b, char c) {
+        return (b | 0x20) == (c | 0x20);
+    }
+
     /**
      * {@code yyyy-MM-dd HH:mm:ss.SSS} を epoch millis へ解析する。
      *

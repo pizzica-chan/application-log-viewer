@@ -30,8 +30,16 @@ public final class LogParser {
     /** ヘッダ行のタイムスタンプ部の固定長（{@code 2026-06-15 00:19:11.705} = 23 文字）。 */
     public static final int TS_LEN = 23;
 
+    /** JULI のタイムスタンプ部の固定長（{@code 15-Jun-2026 00:19:11.705} = 24 文字）。 */
+    static final int JULI_TS_LEN = 24;
+
+    /**
+     * 受け付けるログレベル。SLF4J / log4j 系に加え、java.util.logging（JULI）の
+     * {@code CONFIG} 〜 {@code FINEST} も含める。Tomcat の catalina.out で実際に出るため。
+     */
     private static final Set<String> KNOWN_LEVELS = new HashSet<>(Arrays.asList(
-            "TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "FATAL", "SEVERE"));
+            "TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "FATAL", "SEVERE",
+            "CONFIG", "FINE", "FINER", "FINEST"));
 
     /** 3 番目フィールド末尾とメッセージの区切り（{@code ] - message}）。 */
     private static final String FIELD3_END = "] - ";
@@ -92,6 +100,9 @@ public final class LogParser {
                 // 2026-06-15 00:19:11,705 INFO … / ミリ秒の区切りは . でも , でも可
                 return b[10] == ' ' && (b[19] == '.' || b[19] == ',') && b[23] == ' '
                         && looksLikeTimestamp(b);
+            case TOMCAT_JULI:
+                // 15-Jun-2026 00:19:11.705 INFO …
+                return len >= JULI_TS_LEN + 1 && b[JULI_TS_LEN] == ' ' && looksLikeJuliTimestamp(b);
             case ISO8601:
                 // 2026-06-15T00:19:11.705 INFO … / 2026-06-15T00:19:11,705 …（log4j2 の %d{ISO8601}）
                 // タイムスタンプ直後にタイムゾーンオフセット（+09:00 / Z）が続く形もある。
@@ -119,6 +130,20 @@ public final class LogParser {
     }
 
     /**
+     * JULI のタイムスタンプらしさを判定する（{@code 15-Jun-2026 00:19:11.705}）。
+     * 月名の中身までは見ない。値の妥当性は {@link TimeUtil#parseJuliTimestamp} が確かめる。
+     */
+    private static boolean looksLikeJuliTimestamp(byte[] b) {
+        return isDigit(b[0]) && isDigit(b[1]) && b[2] == '-'
+                && isLetter(b[3]) && isLetter(b[4]) && isLetter(b[5]) && b[6] == '-'
+                && isDigit(b[7]) && isDigit(b[8]) && isDigit(b[9]) && isDigit(b[10])
+                && b[11] == ' ' && isDigit(b[12]) && isDigit(b[13])
+                && b[14] == ':' && isDigit(b[15]) && isDigit(b[16])
+                && b[17] == ':' && isDigit(b[18]) && isDigit(b[19])
+                && b[20] == '.' && isDigit(b[21]) && isDigit(b[22]) && isDigit(b[23]);
+    }
+
+    /**
      * タイムスタンプ部の数字と固定の区切りを確認する。
      * 位置 10（日付と時刻）と 19（ミリ秒）は書式ごとに違うため、ここでは見ない。
      */
@@ -143,18 +168,21 @@ public final class LogParser {
         if (!looksLikeHeader(fmt, b, len)) {
             return null;
         }
-        // 4 書式とも数字の位置は同じで、parseLogTimestamp は区切り文字を見ないため共通に使える。
-        long ts = TimeUtil.parseLogTimestamp(b, 0);
+        boolean juli = fmt == LogFormat.TOMCAT_JULI;
+        // JULI 以外の 4 書式は数字の位置が同じで、parseLogTimestamp は区切り文字を
+        // 見ないため共通に使える。JULI だけ月名が入るので専用の解析を呼ぶ。
+        long ts = juli ? TimeUtil.parseJuliTimestamp(b, 0) : TimeUtil.parseLogTimestamp(b, 0);
         if (ts == Long.MIN_VALUE) {
             return null;
         }
+        int tsLen = juli ? JULI_TS_LEN : TS_LEN;
         // 末尾の CR/LF を除外
         int end = len;
-        while (end > TS_LEN && (b[end - 1] == '\n' || b[end - 1] == '\r')) {
+        while (end > tsLen && (b[end - 1] == '\n' || b[end - 1] == '\r')) {
             end--;
         }
         // タイムスタンプ直後から本文をデコード（オフセットが続く場合は読み飛ばす）
-        int bodyStart = skipZoneOffset(b, TS_LEN, end);
+        int bodyStart = juli ? tsLen : skipZoneOffset(b, TS_LEN, end);
         String rest = new String(b, bodyStart, end - bodyStart, StandardCharsets.UTF_8);
         switch (fmt) {
             case DEFAULT:
@@ -164,6 +192,8 @@ public final class LogParser {
             case LOGBACK:
             case ISO8601:
                 return parseBracketThreadRest(ts, rest);
+            case TOMCAT_JULI:
+                return parseJuliRest(ts, rest);
             default:
                 return null;
         }
@@ -376,6 +406,46 @@ public final class LogParser {
         return digits == 4 ? i : from;
     }
 
+    /**
+     * Tomcat の catalina.out（JULI OneLineFormatter）の本文を解析する。
+     *
+     * <pre>
+     *  INFO [main] org.apache.catalina.startup.Catalina.start Server startup in [1234] milliseconds
+     * </pre>
+     *
+     * <p>ロガーは {@code クラス名.メソッド名} で空白を含まないため、ロガーとメッセージは
+     * 空白 1 つで分かれる。他の書式のような {@code " - "} の区切りは無い。
+     */
+    private static ParsedLine parseJuliRest(long ts, String rest) {
+        int i = skipSpaces(rest, 0);
+        int levelEnd = wordEnd(rest, i);
+        if (levelEnd == i) {
+            return null;
+        }
+        String level = rest.substring(i, levelEnd).toUpperCase(Locale.ROOT);
+        if (!KNOWN_LEVELS.contains(level)) {
+            return null;
+        }
+        i = skipSpaces(rest, levelEnd);
+        if (i >= rest.length() || rest.charAt(i) != '[') {
+            return null;
+        }
+        int threadEnd = rest.indexOf(']', i + 1);
+        if (threadEnd < 0) {
+            return null;
+        }
+        String thread = rest.substring(i + 1, threadEnd).trim();
+        int loggerStart = skipSpaces(rest, threadEnd + 1);
+        int loggerEnd = wordEnd(rest, loggerStart);
+        if (loggerEnd == loggerStart) {
+            return null;
+        }
+        String logger = rest.substring(loggerStart, loggerEnd);
+        // メッセージは空のこともある（区切りの空白すら無い場合を含む）。
+        String message = loggerEnd >= rest.length() ? "" : rest.substring(loggerEnd + 1);
+        return new ParsedLine(ts, logger, level, thread, message);
+    }
+
     private static int skipSpaces(String s, int from) {
         int i = from;
         while (i < s.length() && s.charAt(i) == ' ') {
@@ -428,5 +498,9 @@ public final class LogParser {
 
     private static boolean isDigit(byte c) {
         return c >= '0' && c <= '9';
+    }
+
+    private static boolean isLetter(byte c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
     }
 }

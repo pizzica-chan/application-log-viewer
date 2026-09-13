@@ -43,6 +43,9 @@ class LogFormatTest {
             "2026-06-15 00:19:11,705 INFO  [main] com.example.Hoge - メッセージ";
     private static final String LOGBACK_THREAD_FIRST_LINE =
             "2026-06-15 00:19:11.705 [main] INFO  com.example.Hoge - メッセージ";
+    private static final String JULI_LINE =
+            "15-Jun-2026 00:19:11.705 INFO [main] "
+                    + "org.apache.catalina.startup.Catalina.start Server startup in [1234] milliseconds";
     private static final String ISO_LINE =
             "2026-06-15T00:19:11.705 INFO [main] com.example.Hoge - メッセージ";
 
@@ -165,6 +168,49 @@ class LogFormatTest {
     }
 
     /**
+     * Tomcat の catalina.out（JULI OneLineFormatter）。日付が dd-MMM-yyyy で、
+     * ロガーとメッセージの区切りが空白 1 つになる。
+     */
+    @Test
+    void parsesTomcatJuliFormat() {
+        LogParser.ParsedLine p = LogParser.parseLine(LogFormat.TOMCAT_JULI, JULI_LINE);
+        assertNotNull(p);
+        assertEquals("INFO", p.level);
+        assertEquals("main", p.thread);
+        assertEquals("org.apache.catalina.startup.Catalina.start", p.logger);
+        assertEquals("Server startup in [1234] milliseconds", p.message);
+        assertEquals(TimeUtil.parseUiDatetime("2026-06-15 00:19:11.705"), p.tsMillis);
+    }
+
+    /** JULI は java.util.logging のレベルを出す。FINE 等も受けられること。 */
+    @Test
+    void parsesTomcatJuliJulLevels() {
+        for (String level : new String[] {"SEVERE", "WARNING", "INFO", "CONFIG",
+                "FINE", "FINER", "FINEST"}) {
+            LogParser.ParsedLine p = LogParser.parseLine(LogFormat.TOMCAT_JULI,
+                    "15-Jun-2026 00:19:11.705 " + level + " [main] com.example.Hoge.run メッセージ");
+            assertNotNull(p, level + " を受けられること");
+            assertEquals(level, p.level);
+        }
+    }
+
+    @Test
+    void parsesTomcatJuliEdgeCases() {
+        LogParser.ParsedLine empty = LogParser.parseLine(LogFormat.TOMCAT_JULI,
+                "15-Jun-2026 00:19:11.705 INFO [main] org.apache.catalina.startup.Catalina.start");
+        assertNotNull(empty, "メッセージが空でも解析できること");
+        assertEquals("", empty.message);
+
+        assertNotNull(LogParser.parseLine(LogFormat.TOMCAT_JULI,
+                "15-jun-2026 00:19:11.705 INFO [main] com.example.Hoge.run メッセージ"),
+                "月名の大文字小文字は問わない");
+
+        assertNull(LogParser.parseLine(LogFormat.TOMCAT_JULI,
+                "15-Xyz-2026 00:19:11.705 INFO [main] com.example.Hoge.run メッセージ"),
+                "存在しない月名は解析しない");
+    }
+
+    /**
      * 自動判定が成立する前提。ある書式の行が、他の書式としては解析されないこと。
      * ここが崩れると判定が票割れし、誤った書式が選ばれうる。
      */
@@ -176,6 +222,7 @@ class LogFormatTest {
                 {LogFormat.LOGBACK.id(), LOGBACK_LINE},
                 {LogFormat.LOGBACK.id(), LOGBACK_THREAD_FIRST_LINE},
                 {LogFormat.ISO8601.id(), ISO_LINE},
+                {LogFormat.TOMCAT_JULI.id(), JULI_LINE},
         };
         for (String[] c : cases) {
             LogFormat owner = LogFormat.byId(c[0]);
@@ -197,6 +244,7 @@ class LogFormatTest {
         assertEquals(LogFormat.SPRING_BOOT, detectOf(dir, "b.log", SPRING_LINE));
         assertEquals(LogFormat.LOGBACK, detectOf(dir, "c.log", LOGBACK_LINE));
         assertEquals(LogFormat.ISO8601, detectOf(dir, "d.log", ISO_LINE));
+        assertEquals(LogFormat.TOMCAT_JULI, detectOf(dir, "e.log", JULI_LINE));
     }
 
     @Test
