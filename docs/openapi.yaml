@@ -390,6 +390,16 @@ components:
         load_error:
           type: string
           description: 読み込みエラーメッセージ（`load_status == error` のとき）
+        log_format:
+          type: string
+          description: 直近の読み込みで実際に使った書式
+          enum: [default, spring-boot, logback, iso8601, tomcat-juli]
+        log_format_name:
+          type: string
+          description: 書式の表示名（画面に出す用）
+        log_format_auto:
+          type: boolean
+          description: 自動判定かどうか。`false` なら利用者が明示指定している
 
     BrowseResponse:
       type: object
@@ -415,6 +425,14 @@ components:
         directory:
           type: string
           description: 読み込むログディレクトリのパス
+        format:
+          type: string
+          description: |
+            ログ書式。省略または `auto` のときは先頭ファイルの冒頭からサンプリングして自動判定する。
+            未知の値は 400 を返す（黙って既定へ落とさない）。
+            書式を変えると索引のフィンガープリントが変わるため、索引は作り直される。
+          enum: [auto, default, spring-boot, logback, iso8601, tomcat-juli]
+          default: auto
 
     LogEntry:
       type: object

@@ -157,6 +157,33 @@ Thread に `[]` を含む場合（例: `main:[12345] ch[00]`）も対応しま�
 
 いずれも LEVEL は 2 番目の `[]` 内にあり、FQCN（`.` 含む）やスレッド名パターンから自動判別します。
 
+### 切り替えできる書式
+
+上記 2 つは既定書式（`default`）として扱います。ほかに以下へ切り替えられます。
+
+| 書式 | 例 |
+|------|-----|
+| `spring-boot` | `2026-06-15 00:19:11.705  INFO 12345 --- [main] c.e.Hoge : Message` |
+| `logback` | `2026-06-15 00:19:11,705 INFO  [main] com.example.Hoge - Message` |
+| `iso8601` | `2026-06-15T00:19:11.705 INFO [main] com.example.Hoge - Message` |
+| `tomcat-juli` | `15-Jun-2026 00:19:11.705 INFO [main] org.apache.catalina.startup.Catalina.start Message` |
+
+- `logback` はレベルとスレッドの並びが逆（logback 既定 / log4j 一般形）のどちらでも読めます。
+  ミリ秒の区切りは `.` でも `,` でも構いません
+- `iso8601` は log4j2 の `%d{ISO8601}`（`,` 区切り）と、タイムゾーンオフセット付き
+  （`+09:00` / `Z`）にも対応します。Spring Boot 3.4 以降の既定（ISO 日時 + オフセット）は
+  `spring-boot` で読めます
+- 同時に読み込むファイルはすべて同じ書式である前提です
+
+**書式の決め方**: 既定は自動判定で、先頭ファイルの冒頭 500 行をサンプリングして
+最もよく一致する書式を選びます。判定結果は画面の概要行に出ます。外れた場合は
+ログディレクトリ欄のセレクトで明示指定できます（CLI は `--format <id>`）。
+書式を変えるとインデックスは作り直されます。
+
+**対応していない形式**: logback の既定（`%d{HH:mm:ss.SSS}` で日付が無いもの。
+日付が無いと日をまたいで並べられないため）、java.util.logging の SimpleFormatter
+（1 エントリが 2 行）、log4j 1.x の TTCC（`%r` が起動からの相対ミリ秒）、JSON Lines。
+
 ```
 java.lang.NullPointerException: null
 	at com.example.HogeController.process(HogeController.java:42)
