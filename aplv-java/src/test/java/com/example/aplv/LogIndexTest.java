@@ -66,7 +66,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.BuildResult built = LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.BuildResult built = LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
             assertEquals(2, built.entryCount);
             assertEquals(0, built.skippedLines);
 
@@ -87,14 +87,14 @@ class LogIndexTest {
         List<Path> paths = Collections.singletonList(log);
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, paths, null, false);
-            assertFalse(LogIndex.needsRebuild(conn, paths, false));
+            LogIndex.buildIndex(conn, paths, null, false, LogFormat.DEFAULT);
+            assertFalse(LogIndex.needsRebuild(conn, paths, false, LogFormat.DEFAULT));
 
             Files.write(log,
                     "2026-06-15 00:00:02.000[main][INFO][com.example.B] - two\n"
                             .getBytes(StandardCharsets.UTF_8),
                     StandardOpenOption.APPEND);
-            assertTrue(LogIndex.needsRebuild(conn, paths, false));
+            assertTrue(LogIndex.needsRebuild(conn, paths, false, LogFormat.DEFAULT));
         }
     }
 
@@ -106,9 +106,9 @@ class LogIndexTest {
         List<Path> paths = Collections.singletonList(log);
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, paths, null, false);
-            assertFalse(LogIndex.needsRebuild(conn, paths, false));
-            assertTrue(LogIndex.needsRebuild(conn, paths, true));
+            LogIndex.buildIndex(conn, paths, null, false, LogFormat.DEFAULT);
+            assertFalse(LogIndex.needsRebuild(conn, paths, false, LogFormat.DEFAULT));
+            assertTrue(LogIndex.needsRebuild(conn, paths, true, LogFormat.DEFAULT));
         }
     }
 
@@ -121,7 +121,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Bar] - info two\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             QueryFilter byLevel = new QueryFilter();
             byLevel.levels = QueryFilter.parseLevelFilter("ERROR");
@@ -156,7 +156,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Bar] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, true);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, true, LogFormat.DEFAULT);
             assertTrue(LogIndex.ftsAvailable(conn));
 
             QueryFilter hit = new QueryFilter();
@@ -184,7 +184,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Bar] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
             assertFalse(LogIndex.ftsAvailable(conn));
 
             QueryFilter hit = new QueryFilter();
@@ -206,7 +206,7 @@ class LogIndexTest {
                 "2026-06-15 00:00:02.000[main][WARN][com.example.B] - b1\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            assertEquals(3, LogIndex.buildIndex(conn, Arrays.asList(a, b), null, false).entryCount);
+            assertEquals(3, LogIndex.buildIndex(conn, Arrays.asList(a, b), null, false, LogFormat.DEFAULT).entryCount);
 
             QueryFilter all = new QueryFilter();
             LogQuery.Result r = LogQuery.queryLogs(conn, all, 0, 10);
@@ -226,7 +226,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:03.000[main][INFO][com.example.C] - late\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             QueryFilter range = new QueryFilter();
             range.sinceMillis = TimeUtil.parseUiDatetime("2026-06-15 00:00:02.000");
@@ -245,7 +245,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Bar] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             QueryFilter byThread = new QueryFilter();
             byThread.threadRe = QueryFilter.compileRegex("pool-1");
@@ -274,7 +274,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:03.000[main][INFO][com.example.A] - three\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             LogQuery.Result page1 = LogQuery.queryLogs(conn, new QueryFilter(), 0, 2);
             assertEquals(3, page1.total);
@@ -300,7 +300,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.BuildResult built = LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.BuildResult built = LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
             assertEquals(2, built.entryCount);
             assertEquals(2, built.skippedLines);
             assertEquals(2, built.skippedSamples.size());
@@ -309,7 +309,7 @@ class LogIndexTest {
 
             assertEquals(2, LogIndex.getSkippedLineCount(conn));
             assertFalse(LogIndex.getSkippedLineSamples(conn).isEmpty());
-            assertFalse(LogIndex.needsRebuild(conn, Collections.singletonList(log), false));
+            assertFalse(LogIndex.needsRebuild(conn, Collections.singletonList(log), false, LogFormat.DEFAULT));
             assertEquals(2, LogIndex.getSkippedLineCount(conn));
         }
     }
@@ -356,7 +356,7 @@ class LogIndexTest {
     void pushdownMatchesScanPath(@TempDir Path tmp) throws Exception {
         Path log = writeFiveLines(tmp);
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             for (long offset : new long[] {0, 2, 4, 10}) {
                 assertSamePage(conn, new QueryFilter(), offset, 2);
@@ -393,7 +393,7 @@ class LogIndexTest {
                         + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - ok\n");
 
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             QueryFilter grep = new QueryFilter();
             grep.grepText = "boom";
@@ -452,7 +452,7 @@ class LogIndexTest {
             // スキーマ作成直後は索引を持たない（取込後にまとめて作るため）。
             assertTrue(indexNames(conn).isEmpty(), "初期状態では索引を作らない");
 
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             assertEquals(Arrays.asList("idx_entries_level_ts", "idx_entries_ts"), indexNames(conn));
             assertEquals(Arrays.asList("idx_entries_level_ts", "idx_entries_ts"),
@@ -470,7 +470,7 @@ class LogIndexTest {
     void ensureIndexesMigratesLegacyLayout(@TempDir Path tmp) throws Exception {
         Path log = writeFiveLines(tmp);
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             // 旧バージョン相当の構成に戻す（level 単独索引あり・複合索引なし）。
             try (java.sql.Statement st = conn.createStatement()) {
@@ -515,7 +515,7 @@ class LogIndexTest {
     void ensureIndexesKeepsLevelIndexWhenCreateFails(@TempDir Path tmp) throws Exception {
         Path log = writeFiveLines(tmp);
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
-            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false);
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false, LogFormat.DEFAULT);
 
             // 旧バージョン相当の構成に戻したうえで、複合索引の作成を失敗させる。
             try (java.sql.Statement st = conn.createStatement()) {
@@ -551,10 +551,10 @@ class LogIndexTest {
             blockIndexCreation(conn, "idx_entries_level_ts");
 
             assertThrows(java.sql.SQLException.class,
-                    () -> LogIndex.buildIndex(conn, paths, null, false));
+                    () -> LogIndex.buildIndex(conn, paths, null, false, LogFormat.DEFAULT));
 
             assertEquals(0, LogIndex.entryCount(conn), "取り込んだ行を残さないこと");
-            assertTrue(LogIndex.needsRebuild(conn, paths, false),
+            assertTrue(LogIndex.needsRebuild(conn, paths, false, LogFormat.DEFAULT),
                     "fingerprint を消して次回に再構築させること");
         }
     }

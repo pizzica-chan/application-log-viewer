@@ -12,6 +12,7 @@ const els = {
   parseWarningText: document.getElementById("parse-warning-text"),
   parseWarningSamples: document.getElementById("parse-warning-samples"),
   logDir: document.getElementById("log-dir"),
+  logFormat: document.getElementById("log-format"),
   browse: document.getElementById("browse"),
   loadDir: document.getElementById("load-dir"),
   fileList: document.getElementById("file-list"),
@@ -419,6 +420,25 @@ async function loadMeta(options = {}) {
   }
 }
 
+/**
+ * 実際に使われた書式をセレクトへ反映する。
+ *
+ * <p>自動判定のときは「自動判定」の表示を保ったまま、判定結果を option の文言に添える。
+ * 利用者が明示指定していた場合はその選択をそのまま残す。
+ */
+function syncLogFormatSelect(data) {
+  const auto = els.logFormat.querySelector('option[value="auto"]');
+  if (!auto) return;
+  if (data.log_format_auto && data.log_format_name) {
+    auto.textContent = `書式: 自動判定（${data.log_format_name}）`;
+  } else {
+    auto.textContent = "書式: 自動判定";
+  }
+  if (!data.log_format_auto && data.log_format) {
+    els.logFormat.value = data.log_format;
+  }
+}
+
 function updateParseWarning(data) {
   const skipped = data.skipped_lines || 0;
   if (skipped <= 0) {
@@ -491,7 +511,9 @@ function updateMeta(data) {
   metaRange = { first: data.first, last: data.last };
   els.meta.textContent =
     `${data.total.toLocaleString()} 行 / ファイル ${data.files.length} 件` +
-    (data.first ? ` / ${data.first} 〜 ${data.last}` : "");
+    (data.first ? ` / ${data.first} 〜 ${data.last}` : "") +
+    (data.log_format_name ? ` / 書式: ${data.log_format_name}` : "");
+  syncLogFormatSelect(data);
   els.fileList.textContent = data.files.join(" | ");
   els.fileList.title = data.files.join("\n");
   updateParseWarning(data);
@@ -512,7 +534,7 @@ async function loadDirectory() {
     const res = await fetch("/api/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ directory }),
+      body: JSON.stringify({ directory, format: els.logFormat.value }),
     });
     const data = await res.json();
     if (!res.ok) {

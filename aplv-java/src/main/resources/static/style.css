@@ -121,6 +121,17 @@ header h1 {
   min-width: 0;
 }
 
+/* 書式セレクト。input と同じ見た目に揃える（select には input の指定が当たらない） */
+#log-format {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.75rem;
+}
+
 .dir-input button {
   align-self: auto;
   white-space: nowrap;

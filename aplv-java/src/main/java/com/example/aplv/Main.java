@@ -25,6 +25,7 @@ public final class Main {
         int port = 8766;
         String dir = null;
         boolean enableFts = false;
+        LogFormat logFormat = null;
 
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
@@ -50,6 +51,18 @@ public final class Main {
                 case "--fts":
                     enableFts = true;
                     break;
+                case "--format": {
+                    String value = requireValue(args, ++i, "--format");
+                    if (!"auto".equals(value)) {
+                        logFormat = LogFormat.byId(value);
+                        if (logFormat == null) {
+                            System.err.println("不明なログ書式: " + value);
+                            printUsage();
+                            System.exit(2);
+                        }
+                    }
+                    break;
+                }
                 case "-h":
                 case "--help":
                     printUsage();
@@ -77,7 +90,7 @@ public final class Main {
             }
         }
 
-        LogServer server = new LogServer(logRoot, paths, enableFts);
+        LogServer server = new LogServer(logRoot, paths, enableFts, logFormat);
         try {
             server.start(host, port);
         } catch (IOException e) {
@@ -96,11 +109,17 @@ public final class Main {
 
     private static void printUsage() {
         System.out.println("Application Log Viewer (Java 8)");
-        System.out.println("使い方: java -jar aplv-java.jar [--dir <dir>] [--host <host>] [--port <port>] [--fts]");
+        System.out.println("使い方: java -jar aplv-java.jar [--dir <dir>] [--host <host>] [--port <port>] [--fts] [--format <id>]");
         System.out.println("  --dir   起動時に読み込むログディレクトリ（省略時は UI から選択）");
         System.out.println("  --host  待ち受けアドレス（デフォルト 127.0.0.1）");
         System.out.println("  --port  待ち受けポート（デフォルト 8766）");
         System.out.println("  --fts   全文検索を FTS5 で高速化（インデックス構築は遅くなる。"
                 + "未指定時は全件スキャンで grep）");
+        StringBuilder ids = new StringBuilder();
+        for (LogFormat f : LogFormat.values()) {
+            ids.append(" / ").append(f.id());
+        }
+        System.out.println("  --format ログ書式を固定する（省略時は先頭ファイルから自動判定）");
+        System.out.println("          auto" + ids);
     }
 }

@@ -73,6 +73,13 @@ public final class LogServer {
     private volatile List<Path> logPaths = Collections.emptyList();
     /** 全文検索 FTS5 を構築するか（--fts 指定時のみ true）。 */
     private final boolean enableFts;
+    /**
+     * 利用者が明示指定した書式。{@code null} なら取り込みのたびに自動判定する。
+     * 自動判定が外れたときに UI から上書きできるようにするための逃げ道。
+     */
+    private volatile LogFormat requestedFormat;
+    /** 直近の取り込みで実際に使った書式。画面に出すために保持する。 */
+    private volatile LogFormat resolvedFormat = LogFormat.DEFAULT;
 
     private volatile String loadStatus = "idle"; // idle / loading / ready / error
     private volatile String loadError;
@@ -124,13 +131,15 @@ public final class LogServer {
     private final Map<String, byte[]> staticCache = new HashMap<>();
 
     public LogServer(Path logRoot, List<Path> logPaths) {
-        this(logRoot, logPaths, false);
+        this(logRoot, logPaths, false, null);
     }
 
-    public LogServer(Path logRoot, List<Path> logPaths, boolean enableFts) {
+    public LogServer(Path logRoot, List<Path> logPaths, boolean enableFts,
+            LogFormat requestedFormat) {
         this.logRoot = logRoot;
         this.logPaths = logPaths != null ? logPaths : Collections.<Path>emptyList();
         this.enableFts = enableFts;
+        this.requestedFormat = requestedFormat;
     }
 
     /** サーバを起動して待ち受ける（戻らない）。 */
@@ -154,6 +163,8 @@ public final class LogServer {
         System.out.println("Application Log Viewer (Java): http://" + host + ":" + port);
         System.out.println("インデックス: " + IndexStore.tmpIndexDir() + " (APLV_HOME で repo 変更可)");
         System.out.println("全文検索 FTS5: " + (enableFts ? "有効" : "無効（--fts で有効化）"));
+        System.out.println("ログ書式: "
+                + (requestedFormat != null ? requestedFormat.displayName() : "自動判定"));
         if (logRoot != null) {
             System.out.println("ログディレクトリ: " + PathUtil.normalizePath(logRoot));
         }
@@ -220,6 +231,10 @@ public final class LogServer {
         }
         final Path root = logRoot;
         final List<Path> paths = new ArrayList<>(logPaths);
+        // 明示指定が無ければ先頭ファイルの冒頭から判定する。判定は取り込み開始時の 1 回だけで、
+        // 1 行あたりの処理は確定した 1 書式ぶんしか走らない。
+        final LogFormat requested = requestedFormat;
+        final LogFormat format = requested != null ? requested : LogFormat.detect(paths);
 
         Thread worker = new Thread(() -> {
             // 直前のワーカーは中断されると部分索引を破棄する。その後始末より先に同じ DB を
@@ -262,7 +277,7 @@ public final class LogServer {
                         newConn = LogIndex.openOrCreate(root);
                         LogIndex.clearIndex(newConn);
                         total = 0;
-                    } else if (LogIndex.needsRebuild(newConn, paths, enableFts)) {
+                    } else if (LogIndex.needsRebuild(newConn, paths, enableFts, format)) {
                         if (isStale(gen)) {
                             return;
                         }
@@ -273,7 +288,8 @@ public final class LogServer {
                         }
                         newConn = LogIndex.openOrCreate(root);
                         LogIndex.BuildResult built =
-                                LogIndex.buildIndex(newConn, paths, loadProgress::set, enableFts);
+                                LogIndex.buildIndex(newConn, paths, loadProgress::set, enableFts,
+                                        format);
                         total = built.entryCount;
                     } else {
                         total = LogIndex.entryCount(newConn);
@@ -294,6 +310,9 @@ public final class LogServer {
                 if (isStale(gen)) {
                     return;
                 }
+                // 索引を再利用した場合は、そのとき使った書式を meta から引く（判定と食い違わない）。
+                LogFormat used = LogIndex.getLogFormat(newConn);
+                resolvedFormat = used != null ? used : format;
                 MetaSnapshot snapshot = snapshotMeta(newConn, total);
                 synchronized (loadLock) {
                     if (isStale(gen)) {
@@ -416,6 +435,10 @@ public final class LogServer {
         payload.addProperty("total", total);
         payload.addProperty("first", first);
         payload.addProperty("last", last);
+        LogFormat used = resolvedFormat;
+        payload.addProperty("log_format", used.id());
+        payload.addProperty("log_format_name", used.displayName());
+        payload.addProperty("log_format_auto", requestedFormat == null);
         if (ready && snapshot.skippedLines > 0) {
             payload.addProperty("skipped_lines", snapshot.skippedLines);
             JsonArray samples = new JsonArray();
@@ -497,10 +520,14 @@ public final class LogServer {
     private void handleLoad(HttpExchange ex) throws IOException {
         String body = readBody(ex);
         String directory = "";
+        String formatId = "";
         try {
             JsonObject obj = JsonParser.parseString(body).getAsJsonObject();
             if (obj.has("directory") && !obj.get("directory").isJsonNull()) {
                 directory = obj.get("directory").getAsString();
+            }
+            if (obj.has("format") && !obj.get("format").isJsonNull()) {
+                formatId = obj.get("format").getAsString();
             }
         } catch (RuntimeException e) {
             sendErrorJson(ex, 400, "JSON を解釈できません");
@@ -509,6 +536,15 @@ public final class LogServer {
         if (directory.isEmpty()) {
             sendErrorJson(ex, 400, "directory を指定してください");
             return;
+        }
+        // "auto"（または未指定）は自動判定。未知の id はエラーにして黙って既定へ落とさない。
+        LogFormat format = null;
+        if (!formatId.isEmpty() && !"auto".equals(formatId)) {
+            format = LogFormat.byId(formatId);
+            if (format == null) {
+                sendErrorJson(ex, 400, "未知のログ書式です: " + formatId);
+                return;
+            }
         }
         Path root = PathUtil.resolve(directory);
         if (!Files.isDirectory(root)) {
@@ -523,6 +559,7 @@ public final class LogServer {
             sendErrorJson(ex, 400, e.getMessage());
             return;
         }
+        this.requestedFormat = format;
         synchronized (loadLock) {
             this.logRoot = root;
             this.logPaths = paths;

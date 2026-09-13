@@ -75,6 +75,8 @@ public final class LogIndex {
     private static final int MAX_SKIPPED_SAMPLES = 5;
     private static final int PREVIEW_MAX_LEN = 120;
     private static final String META_SKIPPED_LINES = "skipped_lines";
+    /** 取り込みに使ったログ書式（{@link LogFormat#id()}）。 */
+    private static final String META_LOG_FORMAT = "log_format";
     private static final String META_SKIPPED_SAMPLES = "skipped_samples";
 
     static {
@@ -269,12 +271,13 @@ public final class LogIndex {
     }
 
     /** 保存済みフィンガープリントと異なれば true（再インデックスが必要）。 */
-    public static boolean needsRebuild(Connection conn, List<Path> paths, boolean enableFts)
+    public static boolean needsRebuild(Connection conn, List<Path> paths, boolean enableFts,
+            LogFormat format)
             throws SQLException, IOException {
         if (paths.isEmpty()) {
             return false;
         }
-        String fp = indexFingerprint(paths, enableFts);
+        String fp = indexFingerprint(paths, enableFts, format);
         String stored = null;
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT value FROM meta WHERE key = 'fingerprint'")) {
@@ -287,9 +290,16 @@ public final class LogIndex {
         return !fp.equals(stored);
     }
 
-    /** ファイル集合 + FTS 設定のフィンガープリント（meta 保存用）。 */
-    private static String indexFingerprint(List<Path> paths, boolean enableFts) throws IOException {
-        return fileFingerprint(paths) + "\nfts:" + (enableFts ? "1" : "0");
+    /**
+     * ファイル集合 + FTS 設定 + ログ書式のフィンガープリント（meta 保存用）。
+     *
+     * <p>書式を変えると解析結果そのものが変わるため、フィンガープリントに含めて
+     * 既存の索引を再利用しないようにする。
+     */
+    private static String indexFingerprint(List<Path> paths, boolean enableFts, LogFormat format)
+            throws IOException {
+        return fileFingerprint(paths) + "\nfts:" + (enableFts ? "1" : "0")
+                + "\nformat:" + format.id();
     }
 
     /** entries / files テーブルを空にする。 */
@@ -424,18 +434,18 @@ public final class LogIndex {
      * @return 取り込んだエントリ総数と skipped 行の集計
      */
     public static BuildResult buildIndex(Connection conn, List<Path> paths, ProgressCallback progress,
-            boolean enableFts) throws SQLException, IOException {
+            boolean enableFts, LogFormat format) throws SQLException, IOException {
         boolean prevAutoCommit = conn.getAutoCommit();
         conn.setAutoCommit(false);
         try {
-            return buildIndexTx(conn, paths, progress, enableFts);
+            return buildIndexTx(conn, paths, progress, enableFts, format);
         } finally {
             conn.setAutoCommit(prevAutoCommit);
         }
     }
 
     private static BuildResult buildIndexTx(Connection conn, List<Path> paths, ProgressCallback progress,
-            boolean enableFts) throws SQLException, IOException {
+            boolean enableFts, LogFormat format) throws SQLException, IOException {
         dropEntryIndexes(conn);
         clearIndex(conn);
         boolean hasFts;
@@ -450,7 +460,7 @@ public final class LogIndex {
             st.execute("DELETE FROM meta WHERE key = 'fingerprint'");
         }
         conn.commit();
-        String fp = indexFingerprint(paths, enableFts);
+        String fp = indexFingerprint(paths, enableFts, format);
 
         // files テーブルを先に登録（FK 整合のため）。
         try (PreparedStatement ps = conn.prepareStatement(
@@ -480,7 +490,8 @@ public final class LogIndex {
             final Path path = paths.get(i);
             pool.submit(() -> {
                 try {
-                    parseFileInto(fileId, path, queue, hasFts, skippedCounter, skippedSamples);
+                    parseFileInto(fileId, path, queue, hasFts, skippedCounter, skippedSamples,
+                            format);
                 } catch (Throwable t) {
                     error.compareAndSet(null, t);
                 } finally {
@@ -603,12 +614,37 @@ public final class LogIndex {
             ps.executeUpdate();
         }
         saveSkippedMeta(conn, (int) skippedCounter.get(), skippedSamples);
+        saveLogFormat(conn, format);
         conn.commit();
 
         if (progress != null) {
             progress.onProgress(total);
         }
         return new BuildResult(total, (int) skippedCounter.get(), new ArrayList<>(skippedSamples));
+    }
+
+    /** 取り込みに使った書式を meta に残す。再利用時に画面へ出すため。 */
+    private static void saveLogFormat(Connection conn, LogFormat format) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")) {
+            ps.setString(1, META_LOG_FORMAT);
+            ps.setString(2, format.id());
+            ps.executeUpdate();
+        }
+    }
+
+    /** 取り込みに使った書式。未保存（旧バージョンが作った索引）なら {@code null}。 */
+    public static LogFormat getLogFormat(Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT value FROM meta WHERE key = ?")) {
+            ps.setString(1, META_LOG_FORMAT);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return LogFormat.byId(rs.getString(1));
+                }
+            }
+        }
+        return null;
     }
 
     private static void saveSkippedMeta(Connection conn, int count, List<SkippedLine> samples)
@@ -741,8 +777,8 @@ public final class LogIndex {
     }
 
     private static void parseFileInto(long fileId, Path path, BlockingQueue<List<Row>> queue,
-            boolean collectBody, AtomicLong skippedCounter, List<SkippedLine> skippedSamples)
-            throws IOException, InterruptedException {
+            boolean collectBody, AtomicLong skippedCounter, List<SkippedLine> skippedSamples,
+            LogFormat format) throws IOException, InterruptedException {
         try (InputStream raw = Files.newInputStream(path);
              InputStream in = new BufferedInputStream(raw, 1 << 16);
              ByteLineReader reader = new ByteLineReader(in)) {
@@ -756,9 +792,9 @@ public final class LogIndex {
                 if (reader.isBlankLine()) {
                     continue;
                 }
-                boolean header = LogParser.looksLikeHeader(reader.lineBuf, reader.lineLen);
+                boolean header = LogParser.looksLikeHeader(format, reader.lineBuf, reader.lineLen);
                 LogParser.ParsedLine parsed =
-                        header ? LogParser.parse(reader.lineBuf, reader.lineLen) : null;
+                        header ? LogParser.parse(format, reader.lineBuf, reader.lineLen) : null;
                 if (parsed == null) {
                     if (pending == null) {
                         skippedCounter.incrementAndGet();
