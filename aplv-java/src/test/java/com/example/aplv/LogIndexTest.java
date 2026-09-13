@@ -98,6 +98,43 @@ class LogIndexTest {
         }
     }
 
+    /**
+     * ログ書式を切り替えたら needsRebuild が true になること。
+     *
+     * <p>書式が変われば解析結果そのものが変わるため、古い索引を使い回してはいけない。
+     * フィンガープリントに書式が入っていることを、この試験で担保する。
+     */
+    @Test
+    void needsRebuildAfterLogFormatChange(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15 00:19:11.705[main][INFO][com.example.Hoge] - メッセージ\n");
+        List<Path> paths = Collections.singletonList(log);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, paths, null, false, LogFormat.DEFAULT);
+            assertFalse(LogIndex.needsRebuild(conn, paths, false, LogFormat.DEFAULT),
+                    "同じ書式なら索引を再利用する");
+            for (LogFormat other : LogFormat.values()) {
+                if (other == LogFormat.DEFAULT) {
+                    continue;
+                }
+                assertTrue(LogIndex.needsRebuild(conn, paths, false, other),
+                        other.id() + " に変えたら作り直す");
+            }
+        }
+    }
+
+    /** 取り込みに使った書式が meta に残り、読み戻せること（再利用時の表示に使う）。 */
+    @Test
+    void storesLogFormatInMeta(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15T00:19:11.705 INFO [main] com.example.Hoge - メッセージ\n");
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.ISO8601);
+            assertEquals(LogFormat.ISO8601, LogIndex.getLogFormat(conn));
+        }
+    }
+
     /** FTS 有効/無効の切り替え時に needsRebuild が true になること。 */
     @Test
     void needsRebuildWhenFtsFlagChanges(@TempDir Path tmp) throws Exception {

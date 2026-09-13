@@ -56,6 +56,7 @@ java -jar aplv-java\target\aplv-java.jar --dir samples --port 8766
 | `--host` | 待ち受けアドレス | `127.0.0.1` |
 | `--port` | 待ち受けポート | `8766` |
 | `--fts` | 全文検索を FTS5 で高速化（インデックス構築は遅くなる） | 無効 |
+| `--format` | ログ書式を固定する（`auto` / `default` / `spring-boot` / `logback` / `iso8601` / `tomcat-juli`） | `auto`（自動判定） |
 
 ## Docker で動作確認（ローカル）
 

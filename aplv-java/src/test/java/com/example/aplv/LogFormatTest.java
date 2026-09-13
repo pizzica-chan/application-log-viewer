@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>試験内容:
  * <ul>
- *   <li>4 書式それぞれの解析（日時・レベル・ロガー・スレッド・メッセージ）</li>
+ *   <li>5 書式それぞれの解析（日時・レベル・ロガー・スレッド・メッセージ）</li>
  *   <li>logback / log4j でレベルとスレッドの並びが逆でも解析できること</li>
  *   <li>書式どうしが取り違えられないこと（ある書式の行が他の書式では解析されない）</li>
  *   <li>先頭ファイルのサンプリングによる自動判定</li>
@@ -223,6 +223,13 @@ class LogFormatTest {
                 {LogFormat.LOGBACK.id(), LOGBACK_THREAD_FIRST_LINE},
                 {LogFormat.ISO8601.id(), ISO_LINE},
                 {LogFormat.TOMCAT_JULI.id(), JULI_LINE},
+                // 実在ログの検証で後から対応した形。これらも 1 書式としてのみ解釈されること
+                {LogFormat.ISO8601.id(),
+                        "2026-06-15T00:19:11,705 INFO  [main] com.example.Hoge - メッセージ"},
+                {LogFormat.ISO8601.id(),
+                        "2026-06-15T00:19:11.705+09:00 INFO [main] com.example.Hoge - メッセージ"},
+                {LogFormat.SPRING_BOOT.id(),
+                        "2026-06-15T00:19:11.705+09:00  INFO 12345 --- [main] c.e.Hoge : メッセージ"},
         };
         for (String[] c : cases) {
             LogFormat owner = LogFormat.byId(c[0]);

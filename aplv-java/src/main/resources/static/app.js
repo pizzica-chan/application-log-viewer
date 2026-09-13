@@ -94,14 +94,19 @@ function setBackgroundLoading(loading, message) {
   syncLoadingOverlay();
 }
 
+/**
+ * レベル名を色分け用のクラスへ。SLF4J / log4j 系に加え、java.util.logging の
+ * レベル（Tomcat の catalina.out で出る）も同じ色に寄せる。
+ * FATAL / SEVERE は ERROR、CONFIG は INFO、FINE / FINER は DEBUG、FINEST は TRACE 相当。
+ */
 function levelClass(level) {
   if (!level) return "";
   const upper = String(level).toUpperCase();
-  if (upper === "ERROR") return "level-error";
+  if (upper === "ERROR" || upper === "FATAL" || upper === "SEVERE") return "level-error";
   if (upper === "WARN" || upper === "WARNING") return "level-warn";
-  if (upper === "INFO") return "level-info";
-  if (upper === "DEBUG") return "level-debug";
-  if (upper === "TRACE") return "level-trace";
+  if (upper === "INFO" || upper === "CONFIG") return "level-info";
+  if (upper === "DEBUG" || upper === "FINE" || upper === "FINER") return "level-debug";
+  if (upper === "TRACE" || upper === "FINEST") return "level-trace";
   return "";
 }
 
