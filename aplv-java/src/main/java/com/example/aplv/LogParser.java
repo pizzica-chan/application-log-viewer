@@ -84,18 +84,33 @@ public final class LogParser {
                 // 2026-06-15 00:19:11.705[
                 return b[10] == ' ' && b[19] == '.' && b[23] == '[' && looksLikeTimestamp(b);
             case SPRING_BOOT:
-                // 2026-06-15 00:19:11.705  INFO …
-                return b[10] == ' ' && b[19] == '.' && b[23] == ' ' && looksLikeTimestamp(b);
+                // 2026-06-15 00:19:11.705  INFO … / Spring Boot 3.4 以降の既定は
+                // 2026-06-15T00:19:11.705+09:00  INFO … と ISO 日時 + オフセットになる。
+                return (b[10] == ' ' || b[10] == 'T') && b[19] == '.'
+                        && isBodyStart(b[23]) && looksLikeTimestamp(b);
             case LOGBACK:
                 // 2026-06-15 00:19:11,705 INFO … / ミリ秒の区切りは . でも , でも可
                 return b[10] == ' ' && (b[19] == '.' || b[19] == ',') && b[23] == ' '
                         && looksLikeTimestamp(b);
             case ISO8601:
-                // 2026-06-15T00:19:11.705 INFO …
-                return b[10] == 'T' && b[19] == '.' && b[23] == ' ' && looksLikeTimestamp(b);
+                // 2026-06-15T00:19:11.705 INFO … / 2026-06-15T00:19:11,705 …（log4j2 の %d{ISO8601}）
+                // タイムスタンプ直後にタイムゾーンオフセット（+09:00 / Z）が続く形もある。
+                return b[10] == 'T' && (b[19] == '.' || b[19] == ',')
+                        && isBodyStart(b[23]) && looksLikeTimestamp(b);
             default:
                 return false;
         }
+    }
+
+    /**
+     * タイムスタンプ直後に来てよい文字か。空白のほか、タイムゾーンオフセットの開始も許す。
+     *
+     * <p>{@code 2026-06-15T00:19:11.705+09:00} のようにオフセットが付く形（Spring Boot 3.4 以降の
+     * 既定など）があるため。オフセットの値は使わない ―― このアプリはログに書かれた暦の値を
+     * そのまま扱う方針で、タイムゾーン変換をしないため。
+     */
+    private static boolean isBodyStart(byte c) {
+        return c == ' ' || c == '+' || c == '-' || c == 'Z' || c == 'z';
     }
 
     /** 既定書式での判定。 */
@@ -138,8 +153,9 @@ public final class LogParser {
         while (end > TS_LEN && (b[end - 1] == '\n' || b[end - 1] == '\r')) {
             end--;
         }
-        // タイムスタンプ直後から本文をデコード
-        String rest = new String(b, TS_LEN, end - TS_LEN, StandardCharsets.UTF_8);
+        // タイムスタンプ直後から本文をデコード（オフセットが続く場合は読み飛ばす）
+        int bodyStart = skipZoneOffset(b, TS_LEN, end);
+        String rest = new String(b, bodyStart, end - bodyStart, StandardCharsets.UTF_8);
         switch (fmt) {
             case DEFAULT:
                 return parseDefaultRest(ts, rest);
@@ -322,6 +338,42 @@ public final class LogParser {
         String logger = rest.substring(loggerStart, sep).trim();
         String message = rest.substring(sep + LOGGER_END_DASH.length());
         return new ParsedLine(ts, logger, level, thread, message);
+    }
+
+    /**
+     * タイムスタンプ直後のタイムゾーンオフセットを読み飛ばし、本文の開始位置を返す。
+     *
+     * <p>{@code +09:00} / {@code +0900} / {@code Z} に対応する。値は使わない
+     * （{@link #isBodyStart} の説明のとおり、書かれた暦の値をそのまま扱うため）。
+     * オフセットが無ければ {@code from} をそのまま返す。
+     */
+    private static int skipZoneOffset(byte[] b, int from, int end) {
+        if (from >= end) {
+            return from;
+        }
+        byte c = b[from];
+        if (c == 'Z' || c == 'z') {
+            return from + 1;
+        }
+        if (c != '+' && c != '-') {
+            return from;
+        }
+        // +HH:MM もしくは +HHMM。数字と ':' だけを最大 6 文字読む。
+        int i = from + 1;
+        int digits = 0;
+        while (i < end && digits < 4) {
+            byte d = b[i];
+            if (d >= '0' && d <= '9') {
+                digits++;
+                i++;
+            } else if (d == ':' && digits == 2) {
+                i++;
+            } else {
+                break;
+            }
+        }
+        // 桁が揃っていなければオフセットではないので元の位置に戻す。
+        return digits == 4 ? i : from;
     }
 
     private static int skipSpaces(String s, int from) {

@@ -107,6 +107,64 @@ class LogFormatTest {
     }
 
     /**
+     * log4j2 の {@code %d{ISO8601}} は {@code yyyy-MM-dd'T'HH:mm:ss,SSS} で、
+     * T 区切りかつミリ秒がカンマになる。log4j2 では最も使われる日時指定。
+     */
+    @Test
+    void parsesLog4j2Iso8601WithCommaMillis() {
+        LogParser.ParsedLine p = LogParser.parseLine(LogFormat.ISO8601,
+                "2026-06-15T00:19:11,705 INFO  [main] com.example.Hoge - メッセージ");
+        assertNotNull(p);
+        assertEquals("INFO", p.level);
+        assertEquals("main", p.thread);
+        assertEquals(TimeUtil.parseUiDatetime("2026-06-15 00:19:11.705"), p.tsMillis);
+    }
+
+    /**
+     * タイムスタンプ直後にタイムゾーンオフセットが付く形。
+     * オフセットの値は使わない（このアプリは書かれた暦の値をそのまま扱うため）。
+     */
+    @Test
+    void parsesIso8601WithZoneOffset() {
+        for (String ts : new String[] {
+                "2026-06-15T00:19:11.705+09:00",
+                "2026-06-15T00:19:11.705+0900",
+                "2026-06-15T00:19:11.705-05:00",
+                "2026-06-15T00:19:11.705Z"}) {
+            LogParser.ParsedLine p = LogParser.parseLine(LogFormat.ISO8601,
+                    ts + " INFO [main] com.example.Hoge - メッセージ");
+            assertNotNull(p, ts + " を解析できること");
+            assertEquals("com.example.Hoge", p.logger, ts + " のオフセットを読み飛ばすこと");
+            assertEquals(TimeUtil.parseUiDatetime("2026-06-15 00:19:11.705"), p.tsMillis,
+                    ts + " はタイムゾーン変換せず、書かれた値をそのまま使うこと");
+        }
+    }
+
+    /** Spring Boot 3.4 以降の既定は ISO 日時 + オフセットになる。 */
+    @Test
+    void parsesSpringBootWithIsoTimestamp() {
+        LogParser.ParsedLine p = LogParser.parseLine(LogFormat.SPRING_BOOT,
+                "2026-06-15T00:19:11.705+09:00  INFO 12345 --- [           main] "
+                        + "c.e.Hoge                                 : メッセージ");
+        assertNotNull(p);
+        assertEquals("INFO", p.level);
+        assertEquals("main", p.thread);
+        assertEquals("c.e.Hoge", p.logger);
+        assertEquals("メッセージ", p.message);
+    }
+
+    /**
+     * オフセットに見えるが桁が揃っていないものは読み飛ばさない。
+     * 読み飛ばしてしまうと本文の先頭が欠けるため。
+     */
+    @Test
+    void doesNotSkipMalformedZoneOffset() {
+        assertNull(LogParser.parseLine(LogFormat.ISO8601,
+                "2026-06-15T00:19:11.705+9 INFO [main] com.example.Hoge - メッセージ"),
+                "桁が足りないオフセットは本文として扱われ、結果として解析できない");
+    }
+
+    /**
      * 自動判定が成立する前提。ある書式の行が、他の書式としては解析されないこと。
      * ここが崩れると判定が票割れし、誤った書式が選ばれうる。
      */
