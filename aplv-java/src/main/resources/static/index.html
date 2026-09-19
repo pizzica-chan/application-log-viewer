@@ -161,10 +161,13 @@
   <section class="toolbar">
     <div class="toolbar-left">
       <span id="result-count"></span>
-      <label class="highlight-input">
-        マッチ行をハイライト
-        <input id="highlight" placeholder="含む文字列（表示のみ）">
-      </label>
+      <div class="highlight-input" role="group" aria-label="マッチ行をハイライト"
+           title="含む文字列で行を色分けする（表示のみ・大文字小文字は区別しない）。複数に一致した行は番号の小さい欄の色になる">
+        <span>マッチ行をハイライト</span>
+        <input id="highlight-1" class="hl-input hl-1" placeholder="含む文字列 1" aria-label="ハイライト 1（黄）">
+        <input id="highlight-2" class="hl-input hl-2" placeholder="含む文字列 2" aria-label="ハイライト 2（緑）">
+        <input id="highlight-3" class="hl-input hl-3" placeholder="含む文字列 3" aria-label="ハイライト 3（ピンク）">
+      </div>
       <label class="toggle-input" title="ログファイル列を末尾 2 要素だけの表示とフルパス表示で切り替える">
         <input type="checkbox" id="full-path">
         フルパス表示

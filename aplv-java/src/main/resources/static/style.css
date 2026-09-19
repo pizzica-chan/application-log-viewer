@@ -475,21 +475,37 @@ tbody tr.trace-anchor td.message {
   min-width: 0;
 }
 
+/*
+ * ハイライトの 3 色。rgba() に透明度を付けて使うため RGB の 3 値で持つ。
+ * 入力欄の左の帯と行の背景を同じ色にして、どの欄に一致したかを見分けられるようにする。
+ */
+:root {
+  --hl-1: 210, 153, 34;  /* 黄 */
+  --hl-2: 63, 185, 80;   /* 緑 */
+  --hl-3: 219, 97, 162;  /* ピンク */
+}
+
 /* ラベルを入力の上ではなく横に置く。一覧の高さを稼ぐため */
 .highlight-input {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem 0.5rem;
   font-size: 0.75rem;
   color: var(--muted);
   white-space: nowrap;
 }
 
 .highlight-input input {
-  width: 12rem;
+  width: 9rem;
   min-width: 0;
+  border-left-width: 4px;
 }
+
+.highlight-input input.hl-1 { border-left-color: rgb(var(--hl-1)); }
+.highlight-input input.hl-2 { border-left-color: rgb(var(--hl-2)); }
+.highlight-input input.hl-3 { border-left-color: rgb(var(--hl-3)); }
 
 /* チェックボックスとラベルを 1 行に並べる小さなトグル */
 .toggle-input {
@@ -709,13 +725,12 @@ tbody tr:hover {
   background: rgba(88, 166, 255, 0.08);
 }
 
-tbody tr.row-highlight {
-  background: rgba(210, 153, 34, 0.16);
-}
-
-tbody tr.row-highlight:hover {
-  background: rgba(210, 153, 34, 0.26);
-}
+tbody tr.row-hl-1 { background: rgba(var(--hl-1), 0.16); }
+tbody tr.row-hl-1:hover { background: rgba(var(--hl-1), 0.26); }
+tbody tr.row-hl-2 { background: rgba(var(--hl-2), 0.16); }
+tbody tr.row-hl-2:hover { background: rgba(var(--hl-2), 0.26); }
+tbody tr.row-hl-3 { background: rgba(var(--hl-3), 0.16); }
+tbody tr.row-hl-3:hover { background: rgba(var(--hl-3), 0.26); }
 
 .level-error { color: var(--err); font-weight: 600; }
 .level-warn { color: var(--warn); font-weight: 600; }

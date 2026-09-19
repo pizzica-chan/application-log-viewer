@@ -37,7 +37,8 @@ const els = {
   reset: document.getElementById("reset"),
   rows: document.getElementById("rows"),
   resultCount: document.getElementById("result-count"),
-  highlight: document.getElementById("highlight"),
+  // マッチ行のハイライト。並び順が色の優先順位（row-hl-1 → 3）になる
+  highlights: [1, 2, 3].map((n) => document.getElementById("highlight-" + n)),
   fullPath: document.getElementById("full-path"),
   parseWarningDetails: document.getElementById("parse-warning-details"),
   filtersFields: document.getElementById("filters-fields"),
@@ -355,15 +356,14 @@ let currentPageLimit = DEFAULT_PAGE_LIMIT;
 /** 検索リクエストの通し番号。古いレスポンスで新しい結果を上書きしないために使う。 */
 let logsRequestSeq = 0;
 
-function getHighlightNeedle() {
-  const text = els.highlight.value.trim();
-  return text ? text.toLowerCase() : "";
+/** 各ハイライト欄の検索語（小文字化済み）。空欄は "" のまま位置を保つ。 */
+function getHighlightNeedles() {
+  return els.highlights.map((el) => el.value.trim().toLowerCase());
 }
 
-/** ハイライト判定。grep と同様にスタックトレース含む raw を優先する（検索結果は変えない）。 */
-function rowMatchesHighlight(item, needle) {
-  if (!needle) return false;
-  const haystack = item.raw || [
+/** ハイライト判定の対象文字列。grep と同様にスタックトレース含む raw を優先する（検索結果は変えない）。 */
+function highlightHaystack(item) {
+  const text = item.raw || [
     item.timestamp,
     item.level,
     item.logger,
@@ -372,18 +372,27 @@ function rowMatchesHighlight(item, needle) {
     item.source,
     item.line_no,
   ].filter((v) => v != null && v !== "").join(" ");
-  return haystack.toLowerCase().includes(needle);
+  return text.toLowerCase();
 }
 
+/**
+ * 行を色分けする。複数の欄に一致した行は番号の小さい欄の色にする
+ * （背景色は 1 色しか出せないため。並びで優先順位が分かるようにしている）。
+ */
 function applyRowHighlights() {
-  const needle = getHighlightNeedle();
+  const needles = getHighlightNeedles();
+  const active = needles.some((n) => n);
   const rows = els.rows.querySelectorAll("tr");
   for (let i = 0; i < rows.length; i += 1) {
     const item = lastPageItems[i];
-    rows[i].classList.toggle(
-      "row-highlight",
-      Boolean(item && rowMatchesHighlight(item, needle))
-    );
+    let hit = -1;
+    if (active && item) {
+      const haystack = highlightHaystack(item);
+      hit = needles.findIndex((n) => n && haystack.includes(n));
+    }
+    for (let k = 0; k < needles.length; k += 1) {
+      rows[i].classList.toggle("row-hl-" + (k + 1), k === hit);
+    }
   }
 }
 
@@ -1162,7 +1171,7 @@ try {
   setFiltersCollapsed(false);
 }
 
-els.highlight.addEventListener("input", applyRowHighlights);
+for (const el of els.highlights) el.addEventListener("input", applyRowHighlights);
 els.savedSearches.addEventListener("click", () => {
   renderSavedSearchList();
   els.savedSearchesDialog.showModal();
@@ -1209,7 +1218,7 @@ document.addEventListener("keydown", (e) => {
       loadDirectory();
       return;
     }
-    if (e.target === els.highlight) {
+    if (els.highlights.includes(e.target)) {
       applyRowHighlights();
       return;
     }
