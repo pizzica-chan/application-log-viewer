@@ -1171,7 +1171,40 @@ try {
   setFiltersCollapsed(false);
 }
 
-for (const el of els.highlights) el.addEventListener("input", applyRowHighlights);
+/**
+ * ハイライトの語はブラウザに覚えておく（検索条件の保存とは別。表示だけの設定なので
+ * 保存した検索条件には含めない）。読めない・壊れていても空欄のまま使える。
+ */
+const HIGHLIGHTS_KEY = "aplv.highlights";
+
+function saveHighlights() {
+  try {
+    localStorage.setItem(HIGHLIGHTS_KEY, JSON.stringify(els.highlights.map((el) => el.value)));
+  } catch (e) {
+    // 保存できなくてもハイライト自体は続ける
+  }
+}
+
+function restoreHighlights() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(HIGHLIGHTS_KEY) || "null");
+    if (!Array.isArray(saved)) return;
+    els.highlights.forEach((el, i) => {
+      if (typeof saved[i] === "string") el.value = saved[i];
+    });
+  } catch (e) {
+    // 壊れた値は無視して空欄のままにする
+  }
+}
+
+for (const el of els.highlights) {
+  el.addEventListener("input", () => {
+    applyRowHighlights();
+    saveHighlights();
+  });
+}
+// 最初の一覧を描く前に戻しておく（描画後の applyRowHighlights で色が付く）
+restoreHighlights();
 els.savedSearches.addEventListener("click", () => {
   renderSavedSearchList();
   els.savedSearchesDialog.showModal();
