@@ -550,19 +550,45 @@ components:
             レスポンス肥大を避けるため 4096 文字で切り詰められる。全文は
             /api/logs/detail を参照。
 
+    # LogEntry を allOf で継承しない。allOf は両方の定義を満たす必要があり、LogEntry の
+    # raw（null 不可の文字列）が残って、実際の応答（raw: null）が不合格になるため。
     SessionTraceEntry:
-      allOf:
-        - $ref: '#/components/schemas/LogEntry'
-        - type: object
-          required: [anchor]
-          properties:
-            raw:
-              type: string
-              nullable: true
-              description: 追跡結果では返さない（常に null）。全文は /api/logs/detail を参照
-            anchor:
-              type: boolean
-              description: 識別子を含む（起点になった）エントリか
+      type: object
+      required: [timestamp, level, logger, thread, message, source, line_no, raw, anchor]
+      properties:
+        timestamp:
+          type: string
+          description: タイムスタンプ（`yyyy-MM-ddTHH:mm:ss.SSS`）
+          example: '2026-06-16T10:00:01.010'
+        level:
+          type: string
+          description: ログレベル
+          example: INFO
+        logger:
+          type: string
+          description: ロガー名
+          example: com.example.web.CartController
+        thread:
+          type: string
+          description: スレッド名
+          example: http-nio-8080-exec-1
+        message:
+          type: string
+          description: 1 行目メッセージ
+        source:
+          type: string
+          description: ログファイルパス
+        line_no:
+          type: integer
+          format: int64
+          description: 行番号（1 始まり）
+        raw:
+          type: string
+          nullable: true
+          description: 追跡結果では返さない（常に null）。全文は /api/logs/detail を参照
+        anchor:
+          type: boolean
+          description: 識別子を含む（起点になった）エントリか
 
     SessionTraceRequest:
       type: object
