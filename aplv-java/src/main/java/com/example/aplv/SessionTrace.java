@@ -52,9 +52,14 @@ import com.example.aplv.LogIndex.EntryRow;
  *   <tr><td>26 件（26 リクエスト）</td><td>11ms</td><td>5,221ms</td></tr>
  *   <tr><td>299 件（範囲を求めるのは上限の 200 リクエスト）</td><td>52ms</td><td>5,270ms</td></tr>
  * </table>
+ リクエスト単位の絞り込み（{@link #withRequestFilter}）の追加後に、299 件の条件で測り直した
+ * （同じ条件・5 回の中央値）: 絞り込みなし 51ms、含む・全件一致 53ms、除く・299 件すべてを
+ * 落とす 70ms。絞り込みなしが上表の 52ms と 1ms 違うのは測定のばらつきの範囲で、差は無いとみる。
+ * 絞り込みは結論が出た時点で読むのをやめるので、上の値にほとんど上乗せされない。
  * --fts なしでは起点の数によらずほぼ一定で、起点探しの全件走査（一覧の全文検索と同じ処理）が
  * 大半を占める。ありふれた文字列（{@code sessionId=}、起点 133,347 件）を指定しても、
- * 起点を溜めずに流すので --fts ありで 1,008ms、ヒープ 256MB で完走した。
+ * 起点を溜めずに流すので --fts ありで 1,008ms、ヒープ 256MB で完走した（除外を付けて
+ * {@link #MAX_EXAMINED_REQUESTS} に当たる場合で 1,360ms）。
  * 範囲探索のクエリで files と JOIN していたときは、並べ替えのために時間窓の全行を集めていたため、
  * 上の 2 行が --fts ありでも 1,326ms / 11,743ms かかっていた（{@link LogIndex#selectEntriesOnly}）。
  */
@@ -66,6 +71,12 @@ public final class SessionTrace {
     public static final int MAX_MAX_MINUTES = 24 * 60;
     /** 返すリクエスト数の上限。超えた分は数えるだけで範囲を求めない。 */
     static final int MAX_REQUESTS = 200;
+    /**
+     * 範囲を求めるリクエスト数の上限。絞り込みで落ちたものも数える。
+     * 除外ばかりが続くときに、いつまでも走査し続けないための歯止め。
+     * 実測（100 万行・--fts あり・全件除外）でここまで調べて 1,360ms。
+     */
+    static final int MAX_EXAMINED_REQUESTS = 2000;
     /**
      * 1 リクエストあたりに返すエントリ数の上限（はじまり側・おわり側の合計）。
      * はじまり側は半分までにして、おわり側を探す余地を必ず残す。
@@ -92,6 +103,10 @@ public final class SessionTrace {
     private final Pattern startRe;
     private final Pattern endRe;
     private final long maxDurationMillis;
+    /** これに一致する行を含むリクエストだけを残す（null なら絞り込まない）。 */
+    private Pattern containsRe;
+    /** これに一致する行を含むリクエストを除く（null なら除かない）。 */
+    private Pattern excludesRe;
 
     /**
      * @param sessionId 識別子。正規表現ではなく文字列としてそのまま照合する（大文字小文字を区別）
@@ -114,6 +129,21 @@ public final class SessionTrace {
         this.startRe = startRe;
         this.endRe = endRe;
         this.maxDurationMillis = maxMinutes * 60_000L;
+    }
+
+    /**
+     * リクエスト単位の絞り込みを設定する。
+     *
+     * <p>判定はリクエストの塊ごとに行う（行単位で消すと処理の流れが読めなくなるため）。
+     * 照合はスタックトレースを含むエントリ全体に対して行い、一致した時点で読むのをやめる。
+     *
+     * @param containsRe 一致する行を含むリクエストだけを残す正規表現（null なら絞り込まない）
+     * @param excludesRe 一致する行を含むリクエストを除く正規表現（null なら除かない）
+     */
+    public SessionTrace withRequestFilter(Pattern containsRe, Pattern excludesRe) {
+        this.containsRe = containsRe;
+        this.excludesRe = excludesRe;
+        return this;
     }
 
     /** おわり側の閉じ方。 */
@@ -162,8 +192,10 @@ public final class SessionTrace {
     public static final class Result {
         /** 識別子を含むエントリの総数。 */
         public long anchorTotal;
-        /** {@link #MAX_REQUESTS} を超えて範囲を求めなかった起点があるか。 */
+        /** 上限に達して範囲を求めなかった起点があるか（{@link #MAX_REQUESTS} 等）。 */
         public boolean truncated;
+        /** 絞り込みで落としたリクエスト数。 */
+        public long filteredOut;
         /** 先頭エントリの時刻順。 */
         public final List<Request> requests = new ArrayList<>();
     }
@@ -174,6 +206,7 @@ public final class SessionTrace {
         // 起点が複数あるとき、範囲を求め直さずに既存のリクエストへ寄せるために使う。
         Map<String, List<Request>> byContext = new HashMap<>();
         Map<String, RandomAccessFile> handles = new HashMap<>();
+        int examined = 0;
         // 起点は溜めずに 1 件ずつ処理する。ありふれた文字列を指定すると全行が起点になりうるため。
         // 起点のカーソルを開いたまま範囲探索のクエリを流す（SQLite は同じ接続で併用できる）。
         try (PreparedStatement ps = prepareAnchorQuery(conn);
@@ -191,7 +224,7 @@ public final class SessionTrace {
                     existing.anchorIds.add(anchor.id);
                     continue;
                 }
-                if (result.requests.size() >= MAX_REQUESTS) {
+                if (result.requests.size() >= MAX_REQUESTS || examined >= MAX_EXAMINED_REQUESTS) {
                     result.truncated = true;
                     continue;
                 }
@@ -202,9 +235,18 @@ public final class SessionTrace {
                     previous.anchorIds.add(anchor.id); // 上限で切った後ろにあった起点
                     continue;
                 }
+                examined++;
                 req.anchorIds.add(anchor.id);
-                result.requests.add(req);
+                // 落としたリクエストも byContext には残す。同じリクエストの別の起点で
+                // 範囲を求め直さないため（落とした分がまた出てくることもない）。
                 byContext.computeIfAbsent(key, k -> new ArrayList<>()).add(req);
+                if (keepRequest(req, handles)) {
+                    result.requests.add(req);
+                } else {
+                    // 落としたリクエストは結果に載せない（byContext には残してあるので、
+                    // 同じリクエストの別の起点で求め直すことも、数え直すこともない）。
+                    result.filteredOut++;
+                }
             }
         } finally {
             LogIndex.closeHandles(handles);
@@ -222,6 +264,38 @@ public final class SessionTrace {
             return Long.compare(x.lineNo, y.lineNo);
         });
         return result;
+    }
+
+    /**
+     * 絞り込みを通すか。{@code contains} はどれか 1 行でも一致すれば通し、
+     * {@code excludes} はどれか 1 行でも一致したら落とす。
+     *
+     <p>スタックトレースを含む本文は元ファイルから読むので、結論が出た時点で読むのをやめる。
+     * {@code excludes} が無ければ最初の一致で、{@code contains} が無ければ全行を見ずに済む。
+     *
+     * <p>見るのは {@link #MAX_ROWS_PER_REQUEST} で切ったあとのエントリだけ。切り落とした
+     * 後ろにしか語が無いリクエストは、{@code contains} では残らず、{@code excludes} では
+     * 落ちない。1 リクエストが上限を超えたときだけの話なので、判定を合わせるために
+     * 上限の先まで読み直すことはしない（画面の制限事項に明記している）。
+     */
+    private boolean keepRequest(Request req, Map<String, RandomAccessFile> handles) {
+        if (containsRe == null && excludesRe == null) {
+            return true;
+        }
+        boolean contained = containsRe == null;
+        for (EntryRow e : req.entries) {
+            String raw = LogIndex.readEntryRawCached(handles, e);
+            if (excludesRe != null && excludesRe.matcher(raw).find()) {
+                return false;
+            }
+            if (!contained && containsRe.matcher(raw).find()) {
+                if (excludesRe == null) {
+                    return true;
+                }
+                contained = true;
+            }
+        }
+        return contained;
     }
 
     private static Request findContaining(List<Request> requests, long lineNo) {

@@ -789,7 +789,9 @@ public final class LogServer {
         SessionTrace trace;
         try {
             trace = new SessionTrace(id, QueryFilter.compileRegex(start),
-                    QueryFilter.compileRegex(end), maxMinutes);
+                    QueryFilter.compileRegex(end), maxMinutes)
+                    .withRequestFilter(QueryFilter.compileRegex(p.get("contains")),
+                            QueryFilter.compileRegex(p.get("excludes")));
         } catch (PatternSyntaxException e) {
             sendErrorJson(ex, 400, "正規表現が不正です: " + e.getMessage());
             return;
@@ -811,6 +813,7 @@ public final class LogServer {
         JsonObject payload = new JsonObject();
         payload.addProperty("anchor_total", result.anchorTotal);
         payload.addProperty("truncated", result.truncated);
+        payload.addProperty("filtered_out", result.filteredOut);
         JsonArray requests = new JsonArray();
         for (SessionTrace.Request r : result.requests) {
             JsonObject o = new JsonObject();

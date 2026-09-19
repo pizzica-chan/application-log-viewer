@@ -38,7 +38,18 @@
     <p id="file-list" class="file-list"></p>
   </section>
 
-  <section class="filters">
+  <!--
+    条件欄はタブで切り替える。通常の検索条件はリクエスト追跡には効かないため、
+    同時に見せずに切り替える形にしてある（結果の表・ハイライト・ページャは共通）。
+  -->
+  <div class="mode-tabs" role="tablist" aria-label="条件の種類">
+    <button type="button" id="tab-search" class="mode-tab" role="tab"
+            aria-selected="true" aria-controls="panel-search">検索</button>
+    <button type="button" id="tab-trace" class="mode-tab" role="tab"
+            aria-selected="false" aria-controls="panel-trace">リクエスト追跡</button>
+  </div>
+
+  <section class="filters" id="panel-search" role="tabpanel" aria-labelledby="tab-search">
     <div class="filters-toolbar">
       <span class="filters-toolbar-label">検索条件</span>
       <button type="button" id="regex-samples" class="chip">正規表現サンプル</button>
@@ -108,12 +119,11 @@
   </section>
 
   <!--
-    セッション追跡。使わない人の邪魔にならないよう、検索条件とは別の欄にして既定では閉じておく。
-    ここの入力は検索条件（保存・件数表示・リセット）の対象外。
+    リクエスト追跡のタブ。ここの入力は検索条件（保存・件数表示・リセット）の対象外。
   -->
-  <details id="session-trace" class="session-trace">
-    <summary>セッション追跡 <span class="session-trace-lead">— セッション ID を含むリクエストのログを、リクエストごとにまとめて表示</span></summary>
+  <section id="panel-trace" class="session-trace" role="tabpanel" aria-labelledby="tab-trace" hidden>
     <div class="session-trace-body">
+      <p class="session-trace-lead">セッション ID を含むリクエストのログを、リクエストごとにまとめて表示します。</p>
       <div class="session-trace-fields">
         <label class="session-trace-id">
           セッション ID など（文字列・大文字小文字を区別）
@@ -131,8 +141,18 @@
           最大所要時間（分）
           <input id="trace-max-minutes" type="number" min="1" max="1440" step="1" value="10">
         </label>
+      </div>
+      <div class="session-trace-fields session-trace-narrow">
+        <label>
+          この語を含むリクエストだけ (正規表現)
+          <input id="trace-contains" placeholder="例: PaymentException">
+        </label>
+        <label>
+          この語を含むリクエストを除く (正規表現)
+          <input id="trace-excludes" placeholder="例: /health">
+        </label>
         <button id="trace-run" type="button">追跡</button>
-        <button id="trace-clear" type="button">一覧に戻る</button>
+        <button id="trace-clear" type="button">検索結果に戻る</button>
       </div>
       <details class="session-trace-limits">
         <summary>判定方法と制限事項</summary>
@@ -152,12 +172,15 @@
           <li>どのリクエストの範囲にも入らない行（セッション破棄のログなど）は、その行だけを「単独の行」として表示します。</li>
           <li>スレッド名を出力しない行は、同じスレッドの行を判断できないため単独の行になります。Spring Boot 既定の書式はスレッド名を 15 文字に切り詰めるため、まれに別スレッドと区別できないことがあります。</li>
           <li>表示するのは最大 200 リクエスト、1 リクエストあたり最大 1,000 行です。</li>
+          <li>「この語を含む／含まないリクエスト」の絞り込みは、行ではなく<strong>リクエストの塊</strong>単位です。どれか 1 行でも一致すれば、そのリクエスト全体を残す（除く）ことになります。判定はスタックトレースを含むエントリ全体に対して行います。</li>
+          <li>絞り込みで落とすリクエストも 1 件として数えるため、除外が多いときは調べる件数の上限（2,000 リクエスト）で打ち切ることがあります。</li>
+          <li>絞り込みの判定に使うのは、1 リクエストあたり最大 1,000 行の表示対象だけです。1,000 行を超えたリクエストでは、切り落とした後ろにしか無い語では絞り込めません。</li>
           <li>追跡結果の「マッチ行をハイライト」は、時刻・レベル・ロガー・スレッド・メッセージ（1 行目）・ログファイルだけで判定します。スタックトレースの中にしか無い語は色が付きません（通常の一覧ではスタックトレースも対象です）。</li>
-          <li>上の検索条件（レベル・期間など）は追跡には効きません。リクエスト内の行はレベルに関係なくすべて表示します。「検索」か「一覧に戻る」で、検索条件を適用した一覧に戻ります。</li>
+          <li>「検索」タブの条件（レベル・期間など）は追跡には効きません。リクエスト内の行はレベルに関係なくすべて表示します。検索タブで「検索」を押すか、「検索結果に戻る」で通常の一覧に戻ります。</li>
         </ul>
       </details>
     </div>
-  </details>
+  </section>
 
   <section class="toolbar">
     <div class="toolbar-left">

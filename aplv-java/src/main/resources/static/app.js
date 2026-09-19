@@ -67,8 +67,13 @@ const els = {
   browseSelect: document.getElementById("browse-select"),
   loadingOverlay: document.getElementById("loading-overlay"),
   loadingText: document.getElementById("loading-text"),
-  sessionTrace: document.getElementById("session-trace"),
+  tabSearch: document.getElementById("tab-search"),
+  tabTrace: document.getElementById("tab-trace"),
+  panelSearch: document.getElementById("panel-search"),
+  panelTrace: document.getElementById("panel-trace"),
   traceId: document.getElementById("trace-id"),
+  traceContains: document.getElementById("trace-contains"),
+  traceExcludes: document.getElementById("trace-excludes"),
   traceStart: document.getElementById("trace-start"),
   traceEnd: document.getElementById("trace-end"),
   traceMaxMinutes: document.getElementById("trace-max-minutes"),
@@ -912,7 +917,8 @@ function loadTraceSettings() {
     if (typeof saved.start === "string") els.traceStart.value = saved.start;
     if (typeof saved.end === "string") els.traceEnd.value = saved.end;
     if (saved.maxMinutes) els.traceMaxMinutes.value = String(saved.maxMinutes);
-    if (saved.open) els.sessionTrace.open = true;
+    if (typeof saved.contains === "string") els.traceContains.value = saved.contains;
+    if (typeof saved.excludes === "string") els.traceExcludes.value = saved.excludes;
   } catch (e) {
     // 読めなくても既定値のまま使える
   }
@@ -926,7 +932,8 @@ function saveTraceSettings() {
         start: els.traceStart.value,
         end: els.traceEnd.value,
         maxMinutes: els.traceMaxMinutes.value,
-        open: els.sessionTrace.open,
+        contains: els.traceContains.value,
+        excludes: els.traceExcludes.value,
       })
     );
   } catch (e) {
@@ -994,6 +1001,8 @@ async function runSessionTrace() {
   saveTraceSettings();
   const params = new URLSearchParams({ id, start, end });
   if (els.traceMaxMinutes.value.trim()) params.set("max_minutes", els.traceMaxMinutes.value.trim());
+  if (els.traceContains.value.trim()) params.set("contains", els.traceContains.value.trim());
+  if (els.traceExcludes.value.trim()) params.set("excludes", els.traceExcludes.value.trim());
   // 一覧の検索と同じ通し番号を使い、後から始めた方の結果だけを描く
   const seq = (logsRequestSeq += 1);
   pushLoading("セッションを追跡中...");
@@ -1034,8 +1043,10 @@ function renderSessionTrace(data) {
   let summary =
     `セッション追跡: ${data.requests.length.toLocaleString()} リクエスト / ` +
     `${rowCount.toLocaleString()} 行（ID を含む行 ${data.anchor_total.toLocaleString()} 件）`;
-  if (data.truncated) summary += " — リクエスト数の上限に達したため一部のみ表示";
+  if (data.filtered_out) summary += ` / 絞り込みで除外 ${data.filtered_out.toLocaleString()} リクエスト`;
+  if (data.truncated) summary += " — 上限に達したため一部のみ表示";
   if (data.anchor_total === 0) summary = "セッション追跡: ID を含む行はありませんでした";
+  else if (data.requests.length === 0) summary += " — 絞り込みに一致するリクエストはありません";
   els.resultCount.textContent = summary;
   els.pageInfo.textContent = "-";
   els.prev.disabled = true;
@@ -1046,8 +1057,34 @@ function renderSessionTrace(data) {
 
 els.traceRun.addEventListener("click", runSessionTrace);
 els.traceClear.addEventListener("click", () => loadLogs());
-els.sessionTrace.addEventListener("toggle", saveTraceSettings);
 loadTraceSettings();
+
+/**
+ * 条件欄のタブ切り替え。タブを変えただけでは検索も追跡も走らせない（結果はそのまま）。
+ * 選んだタブはブラウザに覚えておく。
+ */
+const ACTIVE_TAB_KEY = "aplv.activeTab";
+
+function setActiveTab(tab) {
+  const trace = tab === "trace";
+  els.panelSearch.hidden = trace;
+  els.panelTrace.hidden = !trace;
+  els.tabSearch.setAttribute("aria-selected", String(!trace));
+  els.tabTrace.setAttribute("aria-selected", String(trace));
+  try {
+    localStorage.setItem(ACTIVE_TAB_KEY, trace ? "trace" : "search");
+  } catch (e) {
+    // 覚えられなくても切り替え自体は効く
+  }
+}
+
+els.tabSearch.addEventListener("click", () => setActiveTab("search"));
+els.tabTrace.addEventListener("click", () => setActiveTab("trace"));
+try {
+  setActiveTab(localStorage.getItem(ACTIVE_TAB_KEY) === "trace" ? "trace" : "search");
+} catch (e) {
+  setActiveTab("search");
+}
 
 function resetFilters() {
   for (const el of [
@@ -1242,7 +1279,7 @@ els.next.addEventListener("click", () => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.tagName === "INPUT") {
-    if (els.sessionTrace.contains(e.target)) {
+    if (els.panelTrace.contains(e.target)) {
       if (e.isComposing || e.keyCode === 229) return; // IME 確定の Enter では実行しない
       runSessionTrace();
       return;

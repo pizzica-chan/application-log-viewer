@@ -1,0 +1,390 @@
+2026-06-20 09:00:04.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:00:04.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:00:32.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:00:32.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:00:59.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:00:59.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:01:19.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=37
+2026-06-20 09:01:30.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:01:30.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:01:37.766[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:01:37.786[http-nio-8080-exec-1][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=D41B8E2F5A7C4903 orderId=O-1001
+2026-06-20 09:01:37.803[http-nio-8080-exec-1][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-9009
+2026-06-20 09:01:37.833[http-nio-8080-exec-1][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-6006 amount=6800
+2026-06-20 09:01:37.867[http-nio-8080-exec-1][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-5005
+2026-06-20 09:01:37.887[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=121ms
+2026-06-20 09:02:07.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:02:07.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:02:35.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:02:35.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:03:15.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:03:15.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:03:47.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:03:47.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:04:16.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:04:16.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:04:49.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:04:49.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:04:59.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=53
+2026-06-20 09:05:17.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:05:17.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:05:48.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:05:48.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:06:19.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:06:19.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:06:44.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:06:44.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:07:01.951[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:07:01.965[http-nio-8080-exec-2][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=D41B8E2F5A7C4903 orderId=O-8008
+2026-06-20 09:07:01.997[http-nio-8080-exec-2][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-9009
+2026-06-20 09:07:02.037[http-nio-8080-exec-2][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-4004 amount=4800
+2026-06-20 09:07:02.048[http-nio-8080-exec-2][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-9009
+2026-06-20 09:07:02.074[http-nio-8080-exec-2][ERROR][com.example.web.OrderController] - 注文処理に失敗しました
+com.example.order.PaymentException: 決済が拒否されました session=D41B8E2F5A7C4903 orderId=O-8008
+	at com.example.service.PaymentService.charge(PaymentService.java:88)
+	at com.example.service.OrderService.place(OrderService.java:51)
+	at com.example.web.OrderController.post(OrderController.java:37)
+2026-06-20 09:07:02.080[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=500 elapsed=129ms
+2026-06-20 09:07:02.081[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:07:02.100[http-nio-8080-exec-2][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=7B0E9C6A3F18D25E orderId=O-7007
+2026-06-20 09:07:02.105[http-nio-8080-exec-2][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-7007
+2026-06-20 09:07:02.139[http-nio-8080-exec-2][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-1001 amount=1800
+2026-06-20 09:07:02.144[http-nio-8080-exec-2][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-2002
+2026-06-20 09:07:02.169[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=88ms
+2026-06-20 09:07:17.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:07:17.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:07:56.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:07:56.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:08:29.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:08:29.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:09:05.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:09:05.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:09:09.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=74
+2026-06-20 09:09:45.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:09:45.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:10:18.554[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /mypage
+2026-06-20 09:10:18.589[http-nio-8080-exec-3][INFO][com.example.web.MyPageController] - マイページを表示 sessionId=D41B8E2F5A7C4903
+2026-06-20 09:10:18.623[http-nio-8080-exec-3][DEBUG][com.example.service.HistoryService] - 購入履歴を取得 userId=u1000 件数=7
+2026-06-20 09:10:18.642[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=88ms
+2026-06-20 09:10:20.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:10:20.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:10:50.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:10:50.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:10:55.408[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:10:55.426[http-nio-8080-exec-2][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=7B0E9C6A3F18D25E orderId=O-5005
+2026-06-20 09:10:55.465[http-nio-8080-exec-2][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-5005
+2026-06-20 09:10:55.482[http-nio-8080-exec-2][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-6006 amount=6800
+2026-06-20 09:10:55.498[http-nio-8080-exec-2][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-8008
+2026-06-20 09:10:55.515[http-nio-8080-exec-2][ERROR][com.example.web.OrderController] - 注文処理に失敗しました
+com.example.order.PaymentException: 決済が拒否されました session=7B0E9C6A3F18D25E orderId=O-1001
+	at com.example.service.PaymentService.charge(PaymentService.java:88)
+	at com.example.service.OrderService.place(OrderService.java:51)
+	at com.example.web.OrderController.post(OrderController.java:37)
+2026-06-20 09:10:55.522[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=500 elapsed=114ms
+2026-06-20 09:11:29.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:11:29.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:12:00.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:12:00.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:12:29.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:12:29.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:13:00.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:13:00.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:13:32.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=14
+2026-06-20 09:13:38.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:13:38.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:13:56.992[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 09:13:57.011[http-nio-8080-exec-3][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=7B0E9C6A3F18D25E page=5
+2026-06-20 09:13:57.049[http-nio-8080-exec-3][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=77
+2026-06-20 09:13:57.057[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=65ms
+2026-06-20 09:14:04.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:14:04.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:14:33.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:14:33.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:15:02.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:15:02.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:15:23.517[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /mypage
+2026-06-20 09:15:23.530[http-nio-8080-exec-4][INFO][com.example.web.MyPageController] - マイページを表示 sessionId=D41B8E2F5A7C4903
+2026-06-20 09:15:23.552[http-nio-8080-exec-4][DEBUG][com.example.service.HistoryService] - 購入履歴を取得 userId=u1000 件数=5
+2026-06-20 09:15:23.565[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=48ms
+2026-06-20 09:15:23.566[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 09:15:23.599[http-nio-8080-exec-4][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=C58A14D7E93B6F02 page=6
+2026-06-20 09:15:23.617[http-nio-8080-exec-4][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=77
+2026-06-20 09:15:23.636[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=70ms
+2026-06-20 09:15:29.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:15:29.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:16:05.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:16:05.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:16:17.339[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /cart/add
+2026-06-20 09:16:17.379[http-nio-8080-exec-2][INFO][com.example.web.CartController] - カートに追加 sessionId=7B0E9C6A3F18D25E productId=P-303
+2026-06-20 09:16:17.392[http-nio-8080-exec-2][DEBUG][com.example.service.StockService] - 在庫を確認 productId=P-808 stock=88
+2026-06-20 09:16:17.427[http-nio-8080-exec-2][DEBUG][com.example.service.CartService] - カートを保存 items=6
+2026-06-20 09:16:17.437[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=98ms
+2026-06-20 09:16:36.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:16:36.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:16:45.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=50
+2026-06-20 09:17:04.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:17:04.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:17:32.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:17:32.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:18:06.727[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:18:06.732[http-nio-8080-exec-1][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=D41B8E2F5A7C4903 orderId=O-1001
+2026-06-20 09:18:06.772[http-nio-8080-exec-1][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-6006
+2026-06-20 09:18:06.799[http-nio-8080-exec-1][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-1001 amount=1800
+2026-06-20 09:18:06.810[http-nio-8080-exec-1][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-9009
+2026-06-20 09:18:06.833[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=106ms
+2026-06-20 09:18:12.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:18:12.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:18:37.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:18:37.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:19:09.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:19:09.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:19:19.058[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 09:19:19.079[http-nio-8080-exec-1][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=9E26F0B85D4A17C3 page=4
+2026-06-20 09:19:19.091[http-nio-8080-exec-1][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=66
+2026-06-20 09:19:19.105[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=47ms
+2026-06-20 09:19:36.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:19:36.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:20:08.970[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:20:09.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:20:09.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:20:09.004[http-nio-8080-exec-3][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=7B0E9C6A3F18D25E orderId=O-7007
+2026-06-20 09:20:09.027[http-nio-8080-exec-3][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-5005
+2026-06-20 09:20:09.049[http-nio-8080-exec-3][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-9009 amount=9800
+2026-06-20 09:20:09.059[http-nio-8080-exec-3][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-8008
+2026-06-20 09:20:09.069[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=99ms
+2026-06-20 09:20:34.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=57
+2026-06-20 09:20:41.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:20:41.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:21:19.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:21:19.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:21:51.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:21:51.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:22:28.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:22:28.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:23:01.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:23:01.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:23:39.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:23:39.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:24:00.411[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /mypage
+2026-06-20 09:24:00.446[http-nio-8080-exec-1][INFO][com.example.web.MyPageController] - マイページを表示 sessionId=9E26F0B85D4A17C3
+2026-06-20 09:24:00.470[http-nio-8080-exec-1][DEBUG][com.example.service.HistoryService] - 購入履歴を取得 userId=u1003 件数=9
+2026-06-20 09:24:00.475[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=64ms
+2026-06-20 09:24:00.476[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /cart/add
+2026-06-20 09:24:00.490[http-nio-8080-exec-1][INFO][com.example.web.CartController] - カートに追加 sessionId=F3D7A92C608B5E41 productId=P-707
+2026-06-20 09:24:00.530[http-nio-8080-exec-1][DEBUG][com.example.service.StockService] - 在庫を確認 productId=P-404 stock=44
+2026-06-20 09:24:00.554[http-nio-8080-exec-1][DEBUG][com.example.service.CartService] - カートを保存 items=1
+2026-06-20 09:24:00.570[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=94ms
+2026-06-20 09:24:15.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:24:15.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:24:38.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=63
+2026-06-20 09:24:43.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:24:43.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:25:17.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:25:17.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:25:42.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:25:42.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:26:08.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:26:08.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:26:42.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:26:42.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:26:58.848[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 09:26:58.856[http-nio-8080-exec-3][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=9E26F0B85D4A17C3 page=7
+2026-06-20 09:26:58.887[http-nio-8080-exec-3][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=33
+2026-06-20 09:26:58.910[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=62ms
+2026-06-20 09:27:10.682[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 09:27:10.693[http-nio-8080-exec-4][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=C58A14D7E93B6F02 page=1
+2026-06-20 09:27:10.717[http-nio-8080-exec-4][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=88
+2026-06-20 09:27:10.733[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=51ms
+2026-06-20 09:27:18.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:27:18.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:27:44.826[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:27:44.844[http-nio-8080-exec-1][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=F3D7A92C608B5E41 orderId=O-9009
+2026-06-20 09:27:44.862[http-nio-8080-exec-1][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-8008
+2026-06-20 09:27:44.876[http-nio-8080-exec-1][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-8008 amount=8800
+2026-06-20 09:27:44.913[http-nio-8080-exec-1][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-7007
+2026-06-20 09:27:44.920[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=94ms
+2026-06-20 09:27:46.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:27:46.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:28:16.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:28:16.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:28:35.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=38
+2026-06-20 09:28:47.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:28:47.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:29:15.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:29:15.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:29:55.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:29:55.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:30:32.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:30:32.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:30:32.872[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /cart
+2026-06-20 09:30:32.887[http-nio-8080-exec-2][INFO][com.example.web.CartController] - カートを表示 sessionId=C58A14D7E93B6F02
+2026-06-20 09:30:32.923[http-nio-8080-exec-2][DEBUG][com.example.service.CartService] - カートを読み込みます userId=u1002 items=7
+2026-06-20 09:30:32.944[http-nio-8080-exec-2][DEBUG][com.example.db.CartMapper] - SELECT cart WHERE user_id=u1002 件数=6
+2026-06-20 09:30:32.949[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=77ms
+2026-06-20 09:31:05.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:31:05.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:31:36.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:31:36.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:31:50.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=66
+2026-06-20 09:32:14.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:32:14.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:32:43.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:32:43.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:33:22.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:33:22.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:33:50.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:33:50.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:34:06.332[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /cart/add
+2026-06-20 09:34:06.345[http-nio-8080-exec-1][INFO][com.example.web.CartController] - カートに追加 sessionId=2A6C5B83F71E094D productId=P-606
+2026-06-20 09:34:06.371[http-nio-8080-exec-1][DEBUG][com.example.service.StockService] - 在庫を確認 productId=P-808 stock=88
+2026-06-20 09:34:06.380[http-nio-8080-exec-1][DEBUG][com.example.service.CartService] - カートを保存 items=2
+2026-06-20 09:34:06.390[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=58ms
+2026-06-20 09:34:23.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:34:23.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:35:03.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:35:03.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:35:19.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=26
+2026-06-20 09:35:29.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:35:29.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:36:01.198[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:36:01.236[http-nio-8080-exec-2][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=2A6C5B83F71E094D orderId=O-8008
+2026-06-20 09:36:01.252[http-nio-8080-exec-2][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-9009
+2026-06-20 09:36:01.269[http-nio-8080-exec-2][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-3003 amount=3800
+2026-06-20 09:36:01.272[http-nio-8080-exec-2][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-5005
+2026-06-20 09:36:01.297[http-nio-8080-exec-2][ERROR][com.example.web.OrderController] - 注文処理に失敗しました
+com.example.order.PaymentException: 決済が拒否されました session=2A6C5B83F71E094D orderId=O-9009
+	at com.example.service.PaymentService.charge(PaymentService.java:88)
+	at com.example.service.OrderService.place(OrderService.java:51)
+	at com.example.web.OrderController.post(OrderController.java:37)
+2026-06-20 09:36:01.318[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=500 elapsed=120ms
+2026-06-20 09:36:06.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:36:06.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:36:35.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:36:35.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:36:59.805[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:36:59.837[http-nio-8080-exec-3][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=F3D7A92C608B5E41 orderId=O-2002
+2026-06-20 09:36:59.869[http-nio-8080-exec-3][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-3003
+2026-06-20 09:36:59.905[http-nio-8080-exec-3][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-4004 amount=4800
+2026-06-20 09:36:59.921[http-nio-8080-exec-3][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-6006
+2026-06-20 09:36:59.937[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=132ms
+2026-06-20 09:36:59.938[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /mypage
+2026-06-20 09:36:59.966[http-nio-8080-exec-3][INFO][com.example.web.MyPageController] - マイページを表示 sessionId=6F914E0D2B87A3C5
+2026-06-20 09:36:59.989[http-nio-8080-exec-3][DEBUG][com.example.service.HistoryService] - 購入履歴を取得 userId=u1006 件数=5
+2026-06-20 09:37:00.011[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=73ms
+2026-06-20 09:37:01.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:37:01.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:37:34.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:37:34.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:38:00.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:38:00.002[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:38:33.000[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:38:33.002[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:39:11.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:39:11.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:39:40.000[scheduler-1][INFO][com.example.batch.CacheRefresher] - キャッシュを更新しました 件数=53
+2026-06-20 09:39:43.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-20 09:39:43.002[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=2ms
+2026-06-20 09:39:43.380[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:39:43.384[http-nio-8080-exec-1][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=2A6C5B83F71E094D orderId=O-8008
+2026-06-20 09:39:43.422[http-nio-8080-exec-1][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-7007
+2026-06-20 09:39:43.451[http-nio-8080-exec-1][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-1001 amount=1800
+2026-06-20 09:39:43.454[http-nio-8080-exec-1][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-7007
+2026-06-20 09:39:43.457[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=77ms
+2026-06-20 09:39:53.214[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:39:53.221[http-nio-8080-exec-4][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=F3D7A92C608B5E41 orderId=O-2002
+2026-06-20 09:39:53.226[http-nio-8080-exec-4][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-8008
+2026-06-20 09:39:53.256[http-nio-8080-exec-4][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-8008 amount=8800
+2026-06-20 09:39:53.260[http-nio-8080-exec-4][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-1001
+2026-06-20 09:39:53.273[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=59ms
+2026-06-20 09:40:22.675[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 09:40:22.696[http-nio-8080-exec-3][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=6F914E0D2B87A3C5 page=7
+2026-06-20 09:40:22.707[http-nio-8080-exec-3][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=66
+2026-06-20 09:40:22.727[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=52ms
+2026-06-20 09:40:22.728[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /cart/add
+2026-06-20 09:40:22.756[http-nio-8080-exec-3][INFO][com.example.web.CartController] - カートに追加 sessionId=80B5D3A6C49F72E1 productId=P-606
+2026-06-20 09:40:22.772[http-nio-8080-exec-3][DEBUG][com.example.service.StockService] - 在庫を確認 productId=P-202 stock=22
+2026-06-20 09:40:22.784[http-nio-8080-exec-3][DEBUG][com.example.service.CartService] - カートを保存 items=7
+2026-06-20 09:40:22.803[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=75ms
+2026-06-20 09:42:03.059[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /mypage
+2026-06-20 09:42:03.073[http-nio-8080-exec-2][INFO][com.example.web.MyPageController] - マイページを表示 sessionId=2A6C5B83F71E094D
+2026-06-20 09:42:03.108[http-nio-8080-exec-2][DEBUG][com.example.service.HistoryService] - 購入履歴を取得 userId=u1005 件数=9
+2026-06-20 09:42:03.119[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=60ms
+2026-06-20 09:44:18.468[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:44:18.489[http-nio-8080-exec-1][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=6F914E0D2B87A3C5 orderId=O-8008
+2026-06-20 09:44:18.495[http-nio-8080-exec-1][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-2002
+2026-06-20 09:44:18.532[http-nio-8080-exec-1][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-6006 amount=6800
+2026-06-20 09:44:18.546[http-nio-8080-exec-1][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-6006
+2026-06-20 09:44:18.567[http-nio-8080-exec-1][ERROR][com.example.web.OrderController] - 注文処理に失敗しました
+com.example.order.PaymentException: 決済が拒否されました session=6F914E0D2B87A3C5 orderId=O-5005
+	at com.example.service.PaymentService.charge(PaymentService.java:88)
+	at com.example.service.OrderService.place(OrderService.java:51)
+	at com.example.web.OrderController.post(OrderController.java:37)
+2026-06-20 09:44:18.590[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=500 elapsed=122ms
+2026-06-20 09:46:55.384[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /cart
+2026-06-20 09:46:55.420[http-nio-8080-exec-3][INFO][com.example.web.CartController] - カートを表示 sessionId=80B5D3A6C49F72E1
+2026-06-20 09:46:55.442[http-nio-8080-exec-3][DEBUG][com.example.service.CartService] - カートを読み込みます userId=u1007 items=5
+2026-06-20 09:46:55.446[http-nio-8080-exec-3][DEBUG][com.example.db.CartMapper] - SELECT cart WHERE user_id=u1007 件数=2
+2026-06-20 09:46:55.456[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=72ms
+2026-06-20 09:51:54.614[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:51:54.637[http-nio-8080-exec-4][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=6F914E0D2B87A3C5 orderId=O-8008
+2026-06-20 09:51:54.646[http-nio-8080-exec-4][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-2002
+2026-06-20 09:51:54.664[http-nio-8080-exec-4][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-6006 amount=6800
+2026-06-20 09:51:54.684[http-nio-8080-exec-4][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-3003
+2026-06-20 09:51:54.706[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=92ms
+2026-06-20 09:52:01.368[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 09:52:01.403[http-nio-8080-exec-2][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=80B5D3A6C49F72E1 page=5
+2026-06-20 09:52:01.413[http-nio-8080-exec-2][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=11
+2026-06-20 09:52:01.434[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=66ms
+2026-06-20 09:55:32.204[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:55:32.232[http-nio-8080-exec-3][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=4C7E28F1A05D9B36 orderId=O-9009
+2026-06-20 09:55:32.249[http-nio-8080-exec-3][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-7007
+2026-06-20 09:55:32.269[http-nio-8080-exec-3][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-3003 amount=3800
+2026-06-20 09:55:32.276[http-nio-8080-exec-3][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-8008
+2026-06-20 09:55:32.282[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=78ms
+2026-06-20 09:57:13.677[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-20 09:57:13.691[http-nio-8080-exec-1][INFO][com.example.web.OrderController] - 注文を受け付けました sessionId=80B5D3A6C49F72E1 orderId=O-9009
+2026-06-20 09:57:13.697[http-nio-8080-exec-1][INFO][com.example.service.OrderService] - 在庫を引き当てます orderId=O-2002
+2026-06-20 09:57:13.728[http-nio-8080-exec-1][INFO][com.example.service.PaymentService] - 決済を実行します orderId=O-5005 amount=5800
+2026-06-20 09:57:13.734[http-nio-8080-exec-1][DEBUG][com.example.service.OrderService] - 注文を確定しました orderId=O-6006
+2026-06-20 09:57:13.756[http-nio-8080-exec-1][ERROR][com.example.web.OrderController] - 注文処理に失敗しました
+com.example.order.PaymentException: 決済が拒否されました session=80B5D3A6C49F72E1 orderId=O-6006
+	at com.example.service.PaymentService.charge(PaymentService.java:88)
+	at com.example.service.OrderService.place(OrderService.java:51)
+	at com.example.web.OrderController.post(OrderController.java:37)
+2026-06-20 09:57:13.777[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=500 elapsed=100ms
+2026-06-20 09:57:13.778[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /mypage
+2026-06-20 09:57:13.815[http-nio-8080-exec-1][INFO][com.example.web.MyPageController] - マイページを表示 sessionId=E19F6C4B37D0582A
+2026-06-20 09:57:13.846[http-nio-8080-exec-1][DEBUG][com.example.service.HistoryService] - 購入履歴を取得 userId=u1009 件数=3
+2026-06-20 09:57:13.851[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=73ms
+2026-06-20 10:00:05.389[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /cart/add
+2026-06-20 10:00:05.393[http-nio-8080-exec-4][INFO][com.example.web.CartController] - カートに追加 sessionId=4C7E28F1A05D9B36 productId=P-404
+2026-06-20 10:00:05.418[http-nio-8080-exec-4][DEBUG][com.example.service.StockService] - 在庫を確認 productId=P-101 stock=11
+2026-06-20 10:00:05.434[http-nio-8080-exec-4][DEBUG][com.example.service.CartService] - カートを保存 items=7
+2026-06-20 10:00:05.457[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=68ms
+2026-06-20 10:04:27.235[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /mypage
+2026-06-20 10:04:27.263[http-nio-8080-exec-1][INFO][com.example.web.MyPageController] - マイページを表示 sessionId=E19F6C4B37D0582A
+2026-06-20 10:04:27.298[http-nio-8080-exec-1][DEBUG][com.example.service.HistoryService] - 購入履歴を取得 userId=u1009 件数=3
+2026-06-20 10:04:27.307[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=72ms
+2026-06-20 10:09:22.963[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 10:09:22.986[http-nio-8080-exec-4][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=E19F6C4B37D0582A page=5
+2026-06-20 10:09:23.008[http-nio-8080-exec-4][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=66
+2026-06-20 10:09:23.025[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=62ms
+2026-06-20 10:10:10.762[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /cart/add
+2026-06-20 10:10:10.791[http-nio-8080-exec-2][INFO][com.example.web.CartController] - カートに追加 sessionId=4C7E28F1A05D9B36 productId=P-808
+2026-06-20 10:10:10.802[http-nio-8080-exec-2][DEBUG][com.example.service.StockService] - 在庫を確認 productId=P-404 stock=44
+2026-06-20 10:10:10.825[http-nio-8080-exec-2][DEBUG][com.example.service.CartService] - カートを保存 items=9
+2026-06-20 10:10:10.845[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=83ms
+2026-06-20 10:13:19.897[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-20 10:13:19.905[http-nio-8080-exec-3][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=4C7E28F1A05D9B36 page=6
+2026-06-20 10:13:19.915[http-nio-8080-exec-3][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=88
+2026-06-20 10:13:19.932[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=35ms
+2026-06-20 10:13:30.023[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /cart
+2026-06-20 10:13:30.030[http-nio-8080-exec-1][INFO][com.example.web.CartController] - カートを表示 sessionId=E19F6C4B37D0582A
+2026-06-20 10:13:30.055[http-nio-8080-exec-1][DEBUG][com.example.service.CartService] - カートを読み込みます userId=u1009 items=9
+2026-06-20 10:13:30.089[http-nio-8080-exec-1][DEBUG][com.example.db.CartMapper] - SELECT cart WHERE user_id=u1009 件数=6
+2026-06-20 10:13:30.111[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=88ms
+2026-06-20 10:20:54.391[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /cart
+2026-06-20 10:20:54.397[http-nio-8080-exec-4][INFO][com.example.web.CartController] - カートを表示 sessionId=E19F6C4B37D0582A
+2026-06-20 10:20:54.410[http-nio-8080-exec-4][DEBUG][com.example.service.CartService] - カートを読み込みます userId=u1009 items=7
+2026-06-20 10:20:54.425[http-nio-8080-exec-4][DEBUG][com.example.db.CartMapper] - SELECT cart WHERE user_id=u1009 件数=4
+2026-06-20 10:20:54.438[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=47ms

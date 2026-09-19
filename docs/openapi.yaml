@@ -334,7 +334,8 @@ paths:
         WebFlux / Netty のように 1 スレッドで複数リクエストを交互に処理する方式、別ファイルに出たログは
         正しく扱えない。
 
-        返すのは最大 200 リクエスト、1 リクエストあたり最大 1000 行。
+        返すのは最大 200 リクエスト、1 リクエストあたり最大 1000 行。絞り込みで落としたものも
+        数えるため、範囲を求めるリクエスト数は 2000 件で打ち切る（`truncated: true`）。
         インデックス構築中は `loading: true` のみを返す。
       operationId: traceSession
       parameters:
@@ -368,6 +369,24 @@ paths:
             minimum: 1
             maximum: 1440
             default: 10
+        - name: contains
+          in: query
+          description: |
+            一致する行を含むリクエストだけを残す正規表現（大文字小文字無視）。
+            判定はリクエストの塊単位で、スタックトレースを含むエントリ全体に対して行う。
+          required: false
+          schema:
+            type: string
+          example: PaymentException
+        - name: excludes
+          in: query
+          description: |
+            一致する行を含むリクエストを除く正規表現（大文字小文字無視）。
+            `contains` と併用した場合は、含む条件を満たしても除外に当たれば落とす。
+          required: false
+          schema:
+            type: string
+          example: /health
       responses:
         '200':
           description: 追跡結果（読み込み中の場合も 200）
@@ -623,15 +642,21 @@ components:
 
     SessionTraceResponse:
       type: object
-      required: [anchor_total, truncated, requests]
+      required: [anchor_total, truncated, filtered_out, requests]
       properties:
         anchor_total:
           type: integer
           format: int64
-          description: 識別子を含むエントリの総数
+          description: 識別子を含むエントリの総数（絞り込みでは変わらない）
         truncated:
           type: boolean
-          description: リクエスト数の上限（200）を超え、範囲を求めなかった起点があるか
+          description: |
+            上限に達して範囲を求めなかった起点があるか
+            （表示 200 リクエスト、または調べる 2000 リクエスト）
+        filtered_out:
+          type: integer
+          format: int64
+          description: contains / excludes で落としたリクエスト数
         requests:
           type: array
           description: 先頭エントリの時刻順

@@ -87,6 +87,11 @@ class SessionTraceTest {
         return Discovery.findLogFiles(Paths.get("..", "samples", "session"));
     }
 
+    /** 冗長構成（3 インスタンス）のサンプル。1 セッションがファイルをまたぐ。 */
+    private static List<Path> clusterLogs() throws IOException {
+        return Discovery.findLogFiles(Paths.get("..", "samples", "session-cluster"));
+    }
+
     /**
      * リポジトリ同梱のサンプル（samples/session）で、想定した 7 リクエストが得られること。
      * サンプルを書き換えたらこの試験も合わせる（README の説明とも対応している）。
@@ -161,6 +166,219 @@ class SessionTraceTest {
                 assertFalse(m.contains("C07E55A1B9D24F68"), m);
             }
         }
+    }
+
+    private static SessionTrace.Result runFiltered(Path root, List<Path> logs, String contains,
+            String excludes) throws Exception {
+        return runFiltered(root, logs, SID, contains, excludes);
+    }
+
+    private static SessionTrace.Result runFiltered(Path root, List<Path> logs, String id,
+            String contains, String excludes) throws Exception {
+        Files.createDirectories(root);
+        try (Connection conn = LogIndex.openOrCreate(root)) {
+            LogIndex.buildIndex(conn, logs, null, false, LogFormat.DEFAULT);
+            return trace(id, 10)
+                    .withRequestFilter(QueryFilter.compileRegex(contains),
+                            QueryFilter.compileRegex(excludes))
+                    .run(conn);
+        }
+    }
+
+    /**
+     * リクエスト単位の絞り込み。スタックトレースの中にしか無い語でも絞れること、
+     * 除外が優先されること、落とした件数を数えること。
+     */
+    @Test
+    void filtersRequestsByContainsAndExcludes(@TempDir Path tmp) throws Exception {
+        List<Path> logs = sampleLogs();
+        // スタックトレースにしか無い例外クラス名で 1 リクエストに絞れる（全 7 件のうち 1 件）
+        SessionTrace.Result only = runFiltered(tmp.resolve("a"), logs, "PaymentException", null);
+        assertEquals(1, only.requests.size());
+        assertEquals(6, only.filteredOut);
+        assertEquals(8, only.anchorTotal); // 起点の数は絞り込みで変わらない
+        assertEquals("http-nio-8080-exec-2", only.requests.get(0).thread);
+
+        // 除外すると、そのリクエストだけが落ちる
+        SessionTrace.Result without = runFiltered(tmp.resolve("b"), logs, null, "PaymentException");
+        assertEquals(6, without.requests.size());
+        assertEquals(1, without.filteredOut);
+        for (Request r : without.requests) {
+            assertFalse("http-nio-8080-exec-2".equals(r.thread) && r.entries.size() == 5);
+        }
+
+        // 両方指定すると、含む条件を満たしても除外に当たれば落ちる
+        SessionTrace.Result both =
+                runFiltered(tmp.resolve("c"), logs, "リクエスト開始", "PaymentException");
+        // はじまりの行を持つのは 5 件（「はじまり不明」と「単独の行」には無い）。そこから 1 件除く
+        assertEquals(4, both.requests.size());
+        for (Request r : both.requests) {
+            assertTrue(messages(r).get(0).startsWith("リクエスト開始"));
+        }
+    }
+
+    /** 絞り込みで落としたリクエストの別の起点でも、範囲を求め直さず結果にも出ないこと。 */
+    @Test
+    void filteredOutRequestStaysOut(@TempDir Path tmp) throws Exception {
+        String content = line("10:00:00.000", "exec-1", "リクエスト開始 GET /a")
+                + line("10:00:00.010", "exec-1", "id=" + SID + " 1 回目")
+                + line("10:00:00.020", "exec-1", "除外したい語 NG")
+                + line("10:00:00.030", "exec-1", "id=" + SID + " 2 回目")
+                + line("10:00:00.040", "exec-1", "リクエスト終了 status=200");
+        Files.createDirectories(tmp);
+        Path log = writeLog(tmp, "app.log", content);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.DEFAULT);
+            SessionTrace.Result r = trace(SID, 10)
+                    .withRequestFilter(null, QueryFilter.compileRegex("除外したい語"))
+                    .run(conn);
+            assertEquals(2, r.anchorTotal);
+            assertEquals(0, r.requests.size());
+            assertEquals(1, r.filteredOut); // 2 つ目の起点で数え直さない
+        }
+    }
+
+    /** 絞り込みを指定しなければ、これまでどおり全リクエストを返すこと。 */
+    @Test
+    void noFilterKeepsEveryRequest(@TempDir Path tmp) throws Exception {
+        SessionTrace.Result r = runFiltered(tmp, sampleLogs(), null, null);
+        assertEquals(7, r.requests.size());
+        assertEquals(0, r.filteredOut);
+    }
+
+    /** 落としたリクエストも数に入れ、調べる件数の上限で打ち切ること。 */
+    @Test
+    void stopsAfterExaminedLimit(@TempDir Path tmp) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        int n = SessionTrace.MAX_EXAMINED_REQUESTS + 5;
+        for (int i = 0; i < n; i++) {
+            String t = String.format("10:%02d:%02d", i / 60, i % 60);
+            sb.append(line(t + ".000", "exec-1", "リクエスト開始 GET /" + i));
+            sb.append(line(t + ".001", "exec-1", "id=" + SID));
+            sb.append(line(t + ".002", "exec-1", "リクエスト終了 status=200"));
+        }
+        Path log = writeLog(tmp, "app.log", sb.toString());
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.DEFAULT);
+            SessionTrace.Result r = trace(SID, 10)
+                    .withRequestFilter(null, QueryFilter.compileRegex("リクエスト開始"))
+                    .run(conn);
+            assertEquals(n, r.anchorTotal);
+            assertTrue(r.truncated);
+            assertEquals(0, r.requests.size());
+            assertEquals(SessionTrace.MAX_EXAMINED_REQUESTS, r.filteredOut);
+        }
+    }
+
+    /**
+     * 冗長構成のサンプル（samples/session-cluster）で、1 セッションのリクエストを
+     * ログファイルをまたいで追えること。
+     *
+     * <p>同じスレッド名が別インスタンスにもあるため、ファイルで分けられていないと
+     * 別の台のリクエストが混ざる。ここではそれが起きないことも確かめる。
+     * ログは scripts/gen-session-cluster.py で生成している（種を固定した決定的な生成）。
+     */
+    @Test
+    void clusterSampleIsTracedAcrossFiles(@TempDir Path tmp) throws Exception {
+        String sid = "D41B8E2F5A7C4903";
+        List<Path> logs = clusterLogs();
+        assertEquals(3, logs.size());
+        SessionTrace.Result r = run(tmp, logs, false, sid, 10);
+
+        // 12 リクエスト + 同時刻の並列 2 リクエスト + セッション破棄の 1 行。
+        // 起点は 16（例外の回はスタックトレースにも出るため 1 リクエストに 2 つ）
+        assertEquals(16, r.anchorTotal);
+        assertEquals(15, r.requests.size());
+
+        java.util.Set<String> sources = new java.util.HashSet<>();
+        int standalone = 0;
+        int closed = 0;
+        int rows = 0;
+        for (Request req : r.requests) {
+            rows += req.entries.size();
+            sources.add(req.source);
+            if (req.endReason == EndReason.STANDALONE) {
+                standalone++;
+                continue;
+            }
+            closed++;
+            assertEquals(EndReason.END, req.endReason);
+            assertTrue(req.startFound);
+            // 1 リクエストのエントリは同じファイル・同じスレッドに収まる。
+            // ファイルは source ではなく file_id で見る（source は起点のものを引き継ぐため、
+            // 別ファイルの行が混ざっても source の比較では気付けない）。
+            long fileId = req.entries.get(0).fileId;
+            for (EntryRow e : req.entries) {
+                assertEquals(fileId, e.fileId);
+                assertEquals(req.source, e.source);
+                assertEquals(req.thread, e.thread);
+            }
+            // ヘルスチェックや他セッションのリクエストは混ざらない
+            for (String m : messages(req)) {
+                assertFalse(m.contains("/health"), m);
+            }
+        }
+        assertEquals(1, standalone);
+        assertEquals(14, closed);
+        // 行数まで固定して、範囲が短く切れたり他の行を巻き込んだりしたら気付けるようにする
+        assertEquals(69, rows);
+
+        // 同じセッションの並列リクエストが、別インスタンスの同じ名前のスレッドに同時刻で
+        // 乗っている。ファイルで分けていないと、ここで互いのログを巻き込む。
+        List<Request> parallel = new ArrayList<>();
+        for (Request req : r.requests) {
+            if (messages(req).get(0).contains("/api/")) {
+                parallel.add(req);
+            }
+        }
+        assertEquals(2, parallel.size());
+        assertEquals("http-nio-8080-exec-1", parallel.get(0).thread);
+        assertEquals("http-nio-8080-exec-1", parallel.get(1).thread);
+        assertFalse(parallel.get(0).source.equals(parallel.get(1).source));
+        for (Request req : parallel) {
+            assertEquals(4, req.entries.size());
+            boolean cart = messages(req).get(0).contains("/api/cart/count");
+            for (String m : messages(req)) {
+                assertFalse(m.contains(cart ? "通知" : "カート件数"), m);
+            }
+        }
+        // 3 つのインスタンスすべてにまたがっている
+        assertEquals(3, sources.size());
+
+        // 他のセッションの ID を含む行は出てこない
+        for (Request req : r.requests) {
+            for (EntryRow e : req.entries) {
+                String raw = LogIndex.readEntryRaw(Paths.get(e.source), e.byteOffset,
+                        e.endByteOffset);
+                int idAt = raw.indexOf("sessionId=");
+                if (idAt >= 0) {
+                    assertTrue(raw.startsWith(sid, idAt + "sessionId=".length()), raw);
+                }
+            }
+        }
+    }
+
+    /** 冗長構成のサンプルでも、リクエスト単位の絞り込みが効くこと。 */
+    @Test
+    void clusterSampleFilters(@TempDir Path tmp) throws Exception {
+        String sid = "D41B8E2F5A7C4903";
+        List<Path> logs = clusterLogs();
+        // スタックトレースにしか無い例外クラス名で、失敗した注文の 1 リクエストだけ残る
+        SessionTrace.Result only = runFiltered(tmp.resolve("a"), logs, sid, "PaymentException", null);
+        assertEquals(1, only.requests.size());
+        assertEquals(14, only.filteredOut);
+        assertEquals(EndReason.END, only.requests.get(0).endReason);
+        assertTrue(messages(only.requests.get(0)).get(0).contains("POST /order"));
+
+        // /order のリクエストを除くと、残りは /order 以外になる
+        SessionTrace.Result without = runFiltered(tmp.resolve("b"), logs, sid, null, "POST /order");
+        assertTrue(without.filteredOut > 0);
+        for (Request req : without.requests) {
+            assertFalse(messages(req).get(0).contains("POST /order"));
+        }
+        assertEquals(15, without.requests.size() + without.filteredOut);
     }
 
     /** FTS5 で候補を絞っても、全件走査と同じ結果になること。 */
