@@ -778,9 +778,10 @@ public final class LogServer {
             sendErrorJson(ex, 400, "リクエストのはじまりとおわりを指定してください");
             return;
         }
-        int maxMinutes;
+        long maxMinutes;
         try {
-            maxMinutes = (int) parseLong(p.get("max_minutes"), SessionTrace.DEFAULT_MAX_MINUTES);
+            // int に丸めると桁あふれで範囲内の値に化けるため、long のまま範囲を確かめさせる
+            maxMinutes = parseLong(p.get("max_minutes"), SessionTrace.DEFAULT_MAX_MINUTES);
         } catch (NumberFormatException e) {
             sendErrorJson(ex, 400, "max_minutes は整数で指定してください");
             return;

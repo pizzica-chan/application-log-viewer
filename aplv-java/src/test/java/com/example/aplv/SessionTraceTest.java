@@ -375,6 +375,50 @@ class SessionTraceTest {
         assertEquals(SessionTrace.MAX_ROWS_PER_REQUEST, r.entries.size());
     }
 
+    /**
+     * おわり側を上限で切ったリクエストの、切った後ろにある起点は同じリクエストに寄せ、
+     * 別のリクエストとして行を重複させないこと。
+     */
+    @Test
+    void anchorAfterTailCutJoinsSameRequest(@TempDir Path tmp) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        sb.append(line("10:00:00.000", "exec-1", "リクエスト開始 GET /a"));
+        sb.append(line("10:00:00.001", "exec-1", "id=" + SID));
+        for (int i = 0; i < SessionTrace.MAX_ROWS_PER_REQUEST + 300; i++) {
+            sb.append(line(String.format("10:00:%02d.%03d", 1 + i / 1000, i % 1000), "exec-1",
+                    "行 " + i));
+        }
+        sb.append(line("10:00:05.000", "exec-1", "id=" + SID + " 後半"));
+        sb.append(line("10:00:05.010", "exec-1", "リクエスト終了 status=200"));
+        SessionTrace.Result r = run(tmp, sb.toString(), SID, 10);
+        assertEquals(2, r.anchorTotal);
+        assertEquals(1, r.requests.size());
+        Request req = r.requests.get(0);
+        assertTrue(req.truncated);
+        assertEquals(2, req.anchorIds.size());
+    }
+
+    /** 単独の行の範囲にも重ねないこと（遡りはその手前で止まる）。 */
+    @Test
+    void doesNotOverlapPreviousStandalone(@TempDir Path tmp) throws Exception {
+        // 1 つ目の起点は、10 分の窓（〜10:10）におわりが無いので単独の行になる。
+        // 2 つ目の起点（10:09）は 10:12 のおわりで閉じるが、遡る窓（9:59〜）に入っている
+        // 1 つ目の行を取り込まない。
+        String content = line("10:00:00.000", "exec-1", "id=" + SID + " 1")
+                + line("10:09:00.000", "exec-1", "id=" + SID + " 2")
+                + line("10:12:00.000", "exec-1", "リクエスト終了 status=200");
+        SessionTrace.Result r = run(tmp, content, SID, 10);
+        assertEquals(2, r.requests.size());
+        assertEquals(EndReason.STANDALONE, r.requests.get(0).endReason);
+        assertEquals(EndReason.END, r.requests.get(1).endReason);
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (Request req : r.requests) {
+            for (EntryRow e : req.entries) {
+                assertTrue(seen.add(e.id), "重複した行: " + e.message);
+            }
+        }
+    }
+
     /** リクエスト数の上限を超えた起点は数えるだけにすること。 */
     @Test
     void capsRequestCount(@TempDir Path tmp) throws Exception {
@@ -437,6 +481,9 @@ class SessionTraceTest {
         assertThrows(IllegalArgumentException.class, () -> trace(SID, 0));
         assertThrows(IllegalArgumentException.class,
                 () -> trace(SID, SessionTrace.MAX_MAX_MINUTES + 1));
+        // int に丸めると 10 になる値。範囲外として拒否すること
+        assertThrows(IllegalArgumentException.class, () -> new SessionTrace(SID,
+                QueryFilter.compileRegex(START), QueryFilter.compileRegex(END), 4294967306L));
         assertThrows(IllegalArgumentException.class,
                 () -> new SessionTrace(SID, null, QueryFilter.compileRegex(END), 10));
     }

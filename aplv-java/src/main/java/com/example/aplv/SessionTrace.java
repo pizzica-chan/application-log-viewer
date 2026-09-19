@@ -99,7 +99,7 @@ public final class SessionTrace {
      * @param endRe     おわりのメッセージ（1 行目）に一致する正規表現
      * @param maxMinutes 1 リクエストの最大所要時間（分）
      */
-    public SessionTrace(String sessionId, Pattern startRe, Pattern endRe, int maxMinutes) {
+    public SessionTrace(String sessionId, Pattern startRe, Pattern endRe, long maxMinutes) {
         if (sessionId == null || sessionId.isEmpty()) {
             throw new IllegalArgumentException("セッション ID を指定してください");
         }
@@ -137,6 +137,8 @@ public final class SessionTrace {
         public EndReason endReason;
         /** 件数上限で打ち切ったか。 */
         public boolean truncated;
+        /** おわり側を件数上限で打ち切ったか。後ろの行はまだ同じリクエストに属しうる。 */
+        boolean cutAtTail;
         /** 時系列（ファイル内の行順）に並んだエントリ。 */
         public final List<EntryRow> entries = new ArrayList<>();
         /** 起点になった（識別子を含む）エントリの id。行ごとに引くので Set で持つ。 */
@@ -183,7 +185,8 @@ public final class SessionTrace {
                 }
                 result.anchorTotal++;
                 String key = anchor.fileId + "\0" + anchor.thread;
-                Request existing = findContaining(byContext.get(key), anchor.lineNo);
+                List<Request> sameContext = byContext.get(key);
+                Request existing = findContaining(sameContext, anchor.lineNo);
                 if (existing != null) {
                     existing.anchorIds.add(anchor.id);
                     continue;
@@ -192,7 +195,13 @@ public final class SessionTrace {
                     result.truncated = true;
                     continue;
                 }
-                Request req = expand(conn, anchor);
+                // 起点は時刻順に来るので、同じスレッドで直前に求めたリクエストは末尾にある
+                Request previous = sameContext == null ? null : sameContext.get(sameContext.size() - 1);
+                Request req = expand(conn, anchor, previous);
+                if (req == previous) {
+                    previous.anchorIds.add(anchor.id); // 上限で切った後ろにあった起点
+                    continue;
+                }
                 req.anchorIds.add(anchor.id);
                 result.requests.add(req);
                 byContext.computeIfAbsent(key, k -> new ArrayList<>()).add(req);
@@ -270,8 +279,16 @@ public final class SessionTrace {
         return e;
     }
 
-    /** 起点を含むリクエストの範囲を求める。 */
-    private Request expand(Connection conn, EntryRow anchor) throws SQLException {
+    /**
+     * 起点を含むリクエストの範囲を求める。
+     *
+     * <p>遡る途中で {@code previous}（同じファイル・スレッドで直前に求めたリクエスト）の範囲に
+     * 入ったら、そこで止めて行を重複させない。{@code previous} がおわり側を件数上限で切っていた
+     * 場合は、間にはじまりもおわりも無かったので同じリクエストの続きであり、{@code previous}
+     * をそのまま返す（呼び出し側で起点を寄せる）。
+     */
+    private Request expand(Connection conn, EntryRow anchor, Request previous)
+            throws SQLException {
         Request req = new Request(anchor.source, anchor.thread);
         // スレッド名が取れない行は、どの行と同じスレッドか判断できない。
         if (anchor.thread == null || anchor.thread.isEmpty()) {
@@ -295,6 +312,12 @@ public final class SessionTrace {
                         EntryRow e = rowInSameFile(rs, anchor);
                         if (e.tsMillis == anchor.tsMillis && e.lineNo >= anchor.lineNo) {
                             continue; // 同じ時刻で起点以降の行
+                        }
+                        if (previous != null && e.lineNo <= previous.lastLine()) {
+                            if (previous.cutAtTail) {
+                                return previous;
+                            }
+                            break; // 直前のリクエスト（単独の行など）の範囲。重ねない
                         }
                         // おわりを先に見る。両方に一致する行は 1 行で完結した前のリクエストで、
                         // 起点のはじまりにはなりえない。
@@ -363,6 +386,7 @@ public final class SessionTrace {
         req.startFound = startFound;
         req.endReason = reason;
         req.truncated = backwardTruncated || forwardTruncated;
+        req.cutAtTail = forwardTruncated;
         req.entries.addAll(before);
         req.entries.addAll(after);
         return req;
