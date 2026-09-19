@@ -29,6 +29,8 @@ tags:
     description: ログ読み込み・インデックス構築
   - name: logs
     description: ログ検索・詳細
+  - name: session
+    description: セッション追跡（同一リクエストのログの抽出）
 
 paths:
   /api/meta:
@@ -313,6 +315,81 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/session-trace:
+    get:
+      tags: [session]
+      summary: セッション ID を含むリクエストのログを、リクエストごとにまとめて取得
+      description: |
+        `id` を含むエントリ（スタックトレースを含む全体を文字列として照合、大文字小文字を区別）を起点に、
+        **同じログファイル・同じスレッド**で `start` に一致する行から `end` に一致する行までを
+        1 リクエストとして返す。`start` / `end` は 1 行目メッセージへの正規表現（大文字小文字無視）。
+
+        - 起点から遡って最も近いはじまりを探す。途中で別のおわりに当たったら遡るのをやめる
+        - 起点から進み、おわりで閉じる。おわりより先に次のはじまりが来たらその直前で閉じる
+        - はじまりが無くても、次のはじまりより先におわりがあれば 1 リクエストとする（`start_found: false`）
+        - はじまりもおわりも起点を囲まない行は単独で返す（`end_reason: standalone`）
+        - どちらの方向も `max_minutes` を超えたところで打ち切る
+
+        同期処理（1 リクエストを 1 スレッドが最後まで処理する）が前提。非同期処理で別スレッドに出たログ、
+        WebFlux / Netty のように 1 スレッドで複数リクエストを交互に処理する方式、別ファイルに出たログは
+        正しく扱えない。
+
+        返すのは最大 200 リクエスト、1 リクエストあたり最大 1000 行。
+        インデックス構築中は `loading: true` のみを返す。
+      operationId: traceSession
+      parameters:
+        - name: id
+          in: query
+          description: セッション ID などの識別子。正規表現ではなく文字列として照合する（大文字小文字を区別）
+          required: true
+          schema:
+            type: string
+          example: 8F3A2C91D4E6B7A0.node1
+        - name: start
+          in: query
+          description: リクエストのはじまりの 1 行目メッセージに一致する正規表現（大文字小文字無視）
+          required: true
+          schema:
+            type: string
+          example: ^リクエスト開始
+        - name: end
+          in: query
+          description: リクエストのおわりの 1 行目メッセージに一致する正規表現（大文字小文字無視）
+          required: true
+          schema:
+            type: string
+          example: ^リクエスト終了
+        - name: max_minutes
+          in: query
+          description: 1 リクエストの最大所要時間（分）。おわりが見つからないときの打ち切りに使う
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1440
+            default: 10
+      responses:
+        '200':
+          description: 追跡結果（読み込み中の場合も 200）
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/SessionTraceResponse'
+                  - $ref: '#/components/schemas/DetailLoadingResponse'
+        '400':
+          description: 必須パラメータ未指定、正規表現不正、max_minutes が範囲外または非整数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 読み込み失敗または内部エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     LoadStatus:
@@ -472,6 +549,68 @@ components:
             スタックトレースを含む生ログ（クライアント側のハイライト判定用）。
             レスポンス肥大を避けるため 4096 文字で切り詰められる。全文は
             /api/logs/detail を参照。
+
+    SessionTraceEntry:
+      allOf:
+        - $ref: '#/components/schemas/LogEntry'
+        - type: object
+          required: [anchor]
+          properties:
+            raw:
+              type: string
+              nullable: true
+              description: 追跡結果では返さない（常に null）。全文は /api/logs/detail を参照
+            anchor:
+              type: boolean
+              description: 識別子を含む（起点になった）エントリか
+
+    SessionTraceRequest:
+      type: object
+      required: [source, thread, start_found, end_reason, truncated, items]
+      properties:
+        source:
+          type: string
+          description: ログファイルパス
+        thread:
+          type: string
+          description: スレッド名
+        start_found:
+          type: boolean
+          description: はじまりのメッセージを見つけたか
+        end_reason:
+          type: string
+          enum: [end, next_start, not_found, standalone]
+          description: |
+            おわり側の閉じ方
+            - `end` — おわりのメッセージで閉じた
+            - `next_start` — おわりより先に同じスレッドの次のはじまりが来たので、その直前で閉じた
+            - `not_found` — 最大所要時間・ファイル末尾・行数の上限までに閉じなかった
+            - `standalone` — どのリクエストにも属さない単独の行
+        truncated:
+          type: boolean
+          description: 行数の上限（1000 行）で打ち切ったか
+        items:
+          type: array
+          description: ファイル内の行順
+          items:
+            $ref: '#/components/schemas/SessionTraceEntry'
+
+    SessionTraceResponse:
+      type: object
+      required: [anchor_total, truncated, requests]
+      properties:
+        anchor_total:
+          type: integer
+          format: int64
+          description: 識別子を含むエントリの総数
+        truncated:
+          type: boolean
+          description: リクエスト数の上限（200）を超え、範囲を求めなかった起点があるか
+        requests:
+          type: array
+          description: 先頭エントリの時刻順
+          items:
+            $ref: '#/components/schemas/SessionTraceRequest'
 
     LogsResponse:
       type: object

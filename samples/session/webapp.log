@@ -1,0 +1,36 @@
+2026-06-16 10:00:00.020[http-nio-8080-exec-4][DEBUG][com.example.service.CartService] - カート内容を取得 sessionId=8F3A2C91D4E6B7A0.node1 items=3
+2026-06-16 10:00:00.031[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=531ms
+2026-06-16 10:00:01.000[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /cart/add
+2026-06-16 10:00:01.002[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-16 10:00:01.010[http-nio-8080-exec-1][INFO][com.example.web.CartController] - カートに追加 sessionId=8F3A2C91D4E6B7A0.node1 productId=P-1001
+2026-06-16 10:00:01.011[http-nio-8080-exec-2][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=C07E55A1B9D24F68.node1
+2026-06-16 10:00:01.015[http-nio-8080-exec-1][DEBUG][com.example.service.StockService] - 在庫を確認 productId=P-1001 stock=12
+2026-06-16 10:00:01.020[http-nio-8080-exec-2][DEBUG][com.example.db.ProductMapper] - 商品を検索 category=book hits=42
+2026-06-16 10:00:01.030[http-nio-8080-exec-1][DEBUG][com.example.service.CartService] - カートを保存 sessionId=8F3A2C91D4E6B7A0.node1 items=4
+2026-06-16 10:00:01.041[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=41ms
+2026-06-16 10:00:01.045[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=43ms
+2026-06-16 10:00:05.000[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト開始 POST /order
+2026-06-16 10:00:05.010[http-nio-8080-exec-2][INFO][com.example.service.OrderService] - 注文を確定します orderId=O-5001
+2026-06-16 10:00:05.012[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products/P-2002
+2026-06-16 10:00:05.020[http-nio-8080-exec-2][INFO][com.example.service.OrderService] - 確認メールの送信を依頼しました orderId=O-5001
+2026-06-16 10:00:05.021[task-1][INFO][com.example.mail.MailSender] - 確認メールを送信します orderId=O-5001
+2026-06-16 10:00:05.030[http-nio-8080-exec-1][INFO][com.example.web.ProductController] - 商品詳細を表示 sessionId=C07E55A1B9D24F68.node1 productId=P-2002
+2026-06-16 10:00:05.050[http-nio-8080-exec-2][ERROR][com.example.web.OrderController] - 注文処理に失敗しました
+com.example.order.PaymentException: 決済が拒否されました session=8F3A2C91D4E6B7A0.node1 orderId=O-5001
+	at com.example.service.PaymentService.charge(PaymentService.java:88)
+	at com.example.service.OrderService.place(OrderService.java:51)
+2026-06-16 10:00:05.052[http-nio-8080-exec-1][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=40ms
+2026-06-16 10:00:05.060[http-nio-8080-exec-2][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=500 elapsed=60ms
+2026-06-16 10:00:05.300[task-1][ERROR][com.example.mail.MailSender] - 確認メールの送信に失敗しました orderId=O-5001
+2026-06-16 10:00:09.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /mypage
+2026-06-16 10:00:09.010[http-nio-8080-exec-3][INFO][com.example.web.MyPageController] - マイページを表示 sessionId=8F3A2C91D4E6B7A0.node1
+2026-06-16 10:00:09.020[http-nio-8080-exec-3][ERROR][com.example.web.MyPageController] - 購入履歴の取得で例外（おわりのログが出ないまま処理を抜けた例）
+java.lang.IllegalStateException: 購入履歴を取得できません
+	at com.example.service.HistoryService.load(HistoryService.java:30)
+2026-06-16 10:00:12.000[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /products
+2026-06-16 10:00:12.010[http-nio-8080-exec-3][INFO][com.example.web.ProductController] - 商品一覧を表示 sessionId=C07E55A1B9D24F68.node1
+2026-06-16 10:00:12.020[http-nio-8080-exec-3][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=20ms
+2026-06-16 10:30:00.000[Catalina-utility-1][INFO][com.example.web.SessionListener] - セッションを破棄しました sessionId=8F3A2C91D4E6B7A0.node1 reason=timeout
+2026-06-16 10:31:00.000[http-nio-8080-exec-5][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /login
+2026-06-16 10:31:00.010[http-nio-8080-exec-5][INFO][com.example.web.LoginController] - 期限切れのセッションでアクセス sessionId=8F3A2C91D4E6B7A0.node1
+2026-06-16 10:31:00.020[http-nio-8080-exec-5][DEBUG][com.example.web.LoginController] - ログイン画面へ転送します

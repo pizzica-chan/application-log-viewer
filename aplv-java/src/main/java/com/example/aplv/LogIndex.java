@@ -945,6 +945,11 @@ public final class LogIndex {
                     + "e.ts_millis, e.logger, e.level, e.thread, e.message, f.path "
                     + "FROM entries e JOIN files f ON e.file_id = f.id ";
 
+    private static final String SELECT_ENTRIES_ONLY =
+            "SELECT e.id, e.file_id, e.line_no, e.byte_offset, e.end_byte_offset, "
+                    + "e.ts_millis, e.logger, e.level, e.thread, e.message, NULL "
+                    + "FROM entries e ";
+
     static EntryRow rowFrom(ResultSet rs) throws SQLException {
         EntryRow e = new EntryRow();
         e.id = rs.getLong(1);
@@ -993,5 +998,18 @@ public final class LogIndex {
 
     static String selectBase() {
         return SELECT_BASE;
+    }
+
+    /**
+     * {@link #SELECT_BASE} から files との JOIN を外したもの。列の並びは同じで、
+     * ファイルパスの列は NULL になる（{@link #rowFrom} の {@code source} は呼び出し側で補う）。
+     *
+     * <p>JOIN があると SQLite は files を外側に回し、{@code idx_entries_ts} を並び順どおりに
+     * 辿れず {@code USE TEMP B-TREE FOR ORDER BY} で条件に合う行をすべて集めてから並べ替える。
+     * 必要な行だけ読んで途中で打ち切りたい走査（セッション追跡の範囲探索）ではこちらを使う。
+     * 実測は {@link SessionTrace} のコメントを参照。
+     */
+    static String selectEntriesOnly() {
+        return SELECT_ENTRIES_ONLY;
     }
 }

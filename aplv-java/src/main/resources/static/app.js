@@ -66,6 +66,13 @@ const els = {
   browseSelect: document.getElementById("browse-select"),
   loadingOverlay: document.getElementById("loading-overlay"),
   loadingText: document.getElementById("loading-text"),
+  sessionTrace: document.getElementById("session-trace"),
+  traceId: document.getElementById("trace-id"),
+  traceStart: document.getElementById("trace-start"),
+  traceEnd: document.getElementById("trace-end"),
+  traceMaxMinutes: document.getElementById("trace-max-minutes"),
+  traceRun: document.getElementById("trace-run"),
+  traceClear: document.getElementById("trace-clear"),
 };
 
 let loadingDepth = 0;
@@ -777,6 +784,60 @@ function addCell(tr, content, options = {}) {
   return td;
 }
 
+/** 一覧の 1 行を組み立てる。クリックで詳細ダイアログを開く。 */
+function buildLogRow(item) {
+  const tr = document.createElement("tr");
+
+  addCell(tr, item.timestamp);
+  addCell(tr, item.level, { className: levelClass(item.level) });
+  addCell(tr, displayLoggerName(item.logger), {
+    className: "logger",
+    title: item.logger,
+  });
+  addCell(tr, item.thread, { title: item.thread });
+  addCell(tr, item.message, { className: "message", title: item.message });
+  addCell(tr, sourceCellText(item), {
+    className: "source",
+    title: item.source + ":" + item.line_no,
+  });
+
+  tr.addEventListener("click", async () => {
+    pushLoading("詳細を取得中...");
+    try {
+      const detailRes = await fetch(
+        "/api/logs/detail?" +
+          new URLSearchParams({
+            source: item.source,
+            line_no: String(item.line_no),
+            timestamp: item.timestamp,
+          })
+      );
+      const detail = await detailRes.json();
+      if (detail.loading) {
+        return;
+      }
+      if (!detailRes.ok) {
+        alert(detail.error || "詳細の取得に失敗しました。");
+        return;
+      }
+      els.detailBody.textContent =
+        "ログファイル: " + detail.source + "\n" +
+        "行番号: " + detail.line_no + "\n" +
+        "時刻: " + detail.timestamp + "\n" +
+        "Level: " + detail.level + "\n" +
+        "Logger: " + detail.logger + "\n" +
+        "Thread: " + detail.thread + "\n\n" +
+        detail.raw;
+      detailTimestamp = detail.timestamp;
+      detailContext = { source: detail.source || "", thread: detail.thread || "" };
+      els.detail.showModal();
+    } finally {
+      popLoading();
+    }
+  });
+  return tr;
+}
+
 async function loadLogs() {
   // 検索条件を変える経路（リセット・保存済み条件の適用・詳細ダイアログの絞り込み・
   // 統計からの絞り込み）はすべてここを通る。呼び出し側を数え上げると漏れるので、
@@ -819,62 +880,165 @@ async function loadLogs() {
     els.rows.innerHTML = "";
     lastPageItems = data.items;
     for (const item of data.items) {
-      const tr = document.createElement("tr");
-
-      addCell(tr, item.timestamp);
-      addCell(tr, item.level, { className: levelClass(item.level) });
-      addCell(tr, displayLoggerName(item.logger), {
-        className: "logger",
-        title: item.logger,
-      });
-      addCell(tr, item.thread, { title: item.thread });
-      addCell(tr, item.message, { className: "message", title: item.message });
-      addCell(tr, sourceCellText(item), {
-        className: "source",
-        title: item.source + ":" + item.line_no,
-      });
-
-      tr.addEventListener("click", async () => {
-        pushLoading("詳細を取得中...");
-        try {
-          const detailRes = await fetch(
-            "/api/logs/detail?" +
-              new URLSearchParams({
-                source: item.source,
-                line_no: String(item.line_no),
-                timestamp: item.timestamp,
-              })
-          );
-          const detail = await detailRes.json();
-          if (detail.loading) {
-            return;
-          }
-          if (!detailRes.ok) {
-            alert(detail.error || "詳細の取得に失敗しました。");
-            return;
-          }
-          els.detailBody.textContent =
-            "ログファイル: " + detail.source + "\n" +
-            "行番号: " + detail.line_no + "\n" +
-            "時刻: " + detail.timestamp + "\n" +
-            "Level: " + detail.level + "\n" +
-            "Logger: " + detail.logger + "\n" +
-            "Thread: " + detail.thread + "\n\n" +
-            detail.raw;
-          detailTimestamp = detail.timestamp;
-          detailContext = { source: detail.source || "", thread: detail.thread || "" };
-          els.detail.showModal();
-        } finally {
-          popLoading();
-        }
-      });
-      els.rows.appendChild(tr);
+      els.rows.appendChild(buildLogRow(item));
     }
     applyRowHighlights();
   } finally {
     popLoading();
   }
 }
+
+/**
+ * セッション追跡。検索条件とは別枠の機能で、結果は一覧と同じ表にリクエストごとの
+ * 見出し行を挟んで描く。ページングはしない（件数の上限はサーバ側で持つ）。
+ * はじまり・おわり・最大所要時間はアプリごとに決まった値を使い回すので、ブラウザに覚えておく。
+ * セッション ID は調査のたびに変わるので保存しない。
+ */
+const TRACE_SETTINGS_KEY = "aplv.sessionTrace";
+
+function loadTraceSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TRACE_SETTINGS_KEY) || "null");
+    if (!saved) return;
+    if (typeof saved.start === "string") els.traceStart.value = saved.start;
+    if (typeof saved.end === "string") els.traceEnd.value = saved.end;
+    if (saved.maxMinutes) els.traceMaxMinutes.value = String(saved.maxMinutes);
+    if (saved.open) els.sessionTrace.open = true;
+  } catch (e) {
+    // 読めなくても既定値のまま使える
+  }
+}
+
+function saveTraceSettings() {
+  try {
+    localStorage.setItem(
+      TRACE_SETTINGS_KEY,
+      JSON.stringify({
+        start: els.traceStart.value,
+        end: els.traceEnd.value,
+        maxMinutes: els.traceMaxMinutes.value,
+        open: els.sessionTrace.open,
+      })
+    );
+  } catch (e) {
+    // 保存できなくても追跡自体は続ける
+  }
+}
+
+/** 見出し行に付ける状態の表示。判定が確かでないものは警告色にする。 */
+function traceBadges(req) {
+  const badges = [];
+  if (req.end_reason === "standalone") {
+    badges.push({ text: "単独の行（どのリクエストの範囲にも入らない）" });
+    return badges;
+  }
+  if (!req.start_found) badges.push({ text: "はじまり不明" });
+  if (req.end_reason === "end") {
+    if (req.start_found) badges.push({ text: "はじまり〜おわり", ok: true });
+  } else if (req.end_reason === "next_start") {
+    badges.push({ text: "おわり未検出（次のはじまりの直前まで）" });
+  } else {
+    badges.push({ text: "おわり未検出（最大所要時間・ファイル末尾まで）" });
+  }
+  if (req.truncated) badges.push({ text: "行数の上限で打ち切り" });
+  return badges;
+}
+
+function buildTraceGroupRow(req, index) {
+  const tr = document.createElement("tr");
+  tr.className = "trace-group";
+  const td = document.createElement("td");
+  td.colSpan = 6;
+  const first = req.items[0];
+  const last = req.items[req.items.length - 1];
+  const title = document.createElement("span");
+  title.textContent = `#${index + 1}  ${req.thread || "(スレッド名なし)"}`;
+  td.appendChild(title);
+  const meta = document.createElement("span");
+  meta.className = "trace-group-meta";
+  const range = first === last ? first.timestamp : `${first.timestamp} 〜 ${last.timestamp}`;
+  meta.textContent = `${range} / ${req.items.length} 行 / ${formatSourceLabel(req.source)}`;
+  meta.title = req.source;
+  td.appendChild(meta);
+  for (const b of traceBadges(req)) {
+    const badge = document.createElement("span");
+    badge.className = "trace-badge" + (b.ok ? " ok" : "");
+    badge.textContent = b.text;
+    td.appendChild(badge);
+  }
+  tr.appendChild(td);
+  return tr;
+}
+
+async function runSessionTrace() {
+  const id = els.traceId.value.trim();
+  const start = els.traceStart.value.trim();
+  const end = els.traceEnd.value.trim();
+  if (!id) {
+    alert("セッション ID を入力してください。");
+    return;
+  }
+  if (!start || !end) {
+    alert("リクエストのはじまりとおわりを入力してください。");
+    return;
+  }
+  saveTraceSettings();
+  const params = new URLSearchParams({ id, start, end });
+  if (els.traceMaxMinutes.value.trim()) params.set("max_minutes", els.traceMaxMinutes.value.trim());
+  // 一覧の検索と同じ通し番号を使い、後から始めた方の結果だけを描く
+  const seq = (logsRequestSeq += 1);
+  pushLoading("セッションを追跡中...");
+  try {
+    const res = await fetch("/api/session-trace?" + params);
+    const data = await res.json();
+    if (seq !== logsRequestSeq) return;
+    if (data.loading) {
+      alert("ログを読み込み中です。完了してから追跡してください。");
+      return;
+    }
+    if (!res.ok) {
+      alert(data.error || "追跡に失敗しました。");
+      return;
+    }
+    renderSessionTrace(data);
+  } finally {
+    popLoading();
+  }
+}
+
+function renderSessionTrace(data) {
+  els.rows.innerHTML = "";
+  // 見出し行の位置には null を置き、ハイライト等の「行 i ↔ 項目 i」の対応を保つ
+  lastPageItems = [];
+  let rowCount = 0;
+  data.requests.forEach((req, index) => {
+    els.rows.appendChild(buildTraceGroupRow(req, index));
+    lastPageItems.push(null);
+    for (const item of req.items) {
+      const tr = buildLogRow(item);
+      if (item.anchor) tr.classList.add("trace-anchor");
+      els.rows.appendChild(tr);
+      lastPageItems.push(item);
+      rowCount += 1;
+    }
+  });
+  let summary =
+    `セッション追跡: ${data.requests.length.toLocaleString()} リクエスト / ` +
+    `${rowCount.toLocaleString()} 行（ID を含む行 ${data.anchor_total.toLocaleString()} 件）`;
+  if (data.truncated) summary += " — リクエスト数の上限に達したため一部のみ表示";
+  if (data.anchor_total === 0) summary = "セッション追跡: ID を含む行はありませんでした";
+  els.resultCount.textContent = summary;
+  els.pageInfo.textContent = "-";
+  els.prev.disabled = true;
+  els.next.disabled = true;
+  applyRowHighlights();
+  applySourceDisplay();
+}
+
+els.traceRun.addEventListener("click", runSessionTrace);
+els.traceClear.addEventListener("click", () => loadLogs());
+els.sessionTrace.addEventListener("toggle", saveTraceSettings);
+loadTraceSettings();
 
 function resetFilters() {
   for (const el of [
@@ -1036,6 +1200,11 @@ els.next.addEventListener("click", () => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.tagName === "INPUT") {
+    if (els.sessionTrace.contains(e.target)) {
+      if (e.isComposing || e.keyCode === 229) return; // IME 確定の Enter では実行しない
+      runSessionTrace();
+      return;
+    }
     if (e.target === els.logDir) {
       loadDirectory();
       return;

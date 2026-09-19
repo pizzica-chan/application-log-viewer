@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * 自前 HTTP サーバ（JDK 内蔵 {@link com.sun.net.httpserver.HttpServer} を使用）。
@@ -45,6 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>{@code POST /api/load}     — ディレクトリ指定・インデックス構築開始</li>
  *   <li>{@code GET /api/logs}      — フィルタ付き一覧</li>
  *   <li>{@code GET /api/logs/detail} — スタックトレース含む生ログ</li>
+ *   <li>{@code GET /api/session-trace} — セッション ID を含むリクエストの追跡</li>
  * </ul>
  */
 public final class LogServer {
@@ -200,6 +202,8 @@ public final class LogServer {
                     handleLogs(ex);
                 } else if ("/api/logs/detail".equals(path)) {
                     handleDetail(ex);
+                } else if ("/api/session-trace".equals(path)) {
+                    handleSessionTrace(ex);
                 } else {
                     sendError(ex, 404, "not found");
                 }
@@ -745,6 +749,87 @@ public final class LogServer {
         o.addProperty("thread", entry.thread);
         o.addProperty("raw", raw);
         sendJson(ex, 200, o);
+    }
+
+    // ---- API: session-trace -----------------------------------------------
+
+    private void handleSessionTrace(HttpExchange ex) throws IOException {
+        if ("loading".equals(loadStatus)) {
+            JsonObject payload = new JsonObject();
+            payload.addProperty("loading", true);
+            payload.addProperty("load_progress", loadProgress.get());
+            sendJson(ex, 200, payload);
+            return;
+        }
+        if ("error".equals(loadStatus)) {
+            sendErrorJson(ex, 500, loadError != null ? loadError : "読み込みに失敗しました");
+            return;
+        }
+
+        Map<String, String> p = queryParams(ex);
+        String id = p.getOrDefault("id", "").trim();
+        String start = p.getOrDefault("start", "");
+        String end = p.getOrDefault("end", "");
+        if (id.isEmpty()) {
+            sendErrorJson(ex, 400, "セッション ID を指定してください");
+            return;
+        }
+        if (start.isEmpty() || end.isEmpty()) {
+            sendErrorJson(ex, 400, "リクエストのはじまりとおわりを指定してください");
+            return;
+        }
+        int maxMinutes;
+        try {
+            maxMinutes = (int) parseLong(p.get("max_minutes"), SessionTrace.DEFAULT_MAX_MINUTES);
+        } catch (NumberFormatException e) {
+            sendErrorJson(ex, 400, "max_minutes は整数で指定してください");
+            return;
+        }
+        SessionTrace trace;
+        try {
+            trace = new SessionTrace(id, QueryFilter.compileRegex(start),
+                    QueryFilter.compileRegex(end), maxMinutes);
+        } catch (PatternSyntaxException e) {
+            sendErrorJson(ex, 400, "正規表現が不正です: " + e.getMessage());
+            return;
+        } catch (IllegalArgumentException e) {
+            sendErrorJson(ex, 400, e.getMessage());
+            return;
+        }
+
+        SessionTrace.Result result;
+        try {
+            synchronized (dbLock) {
+                result = trace.run(conn);
+            }
+        } catch (Exception e) {
+            sendErrorJson(ex, 500, e.getMessage());
+            return;
+        }
+
+        JsonObject payload = new JsonObject();
+        payload.addProperty("anchor_total", result.anchorTotal);
+        payload.addProperty("truncated", result.truncated);
+        JsonArray requests = new JsonArray();
+        for (SessionTrace.Request r : result.requests) {
+            JsonObject o = new JsonObject();
+            o.addProperty("source", r.source);
+            o.addProperty("thread", r.thread);
+            o.addProperty("start_found", r.startFound);
+            o.addProperty("end_reason", r.endReason.name().toLowerCase(Locale.ROOT));
+            o.addProperty("truncated", r.truncated);
+            JsonArray items = new JsonArray();
+            for (LogIndex.EntryRow e : r.entries) {
+                // 一覧の raw はハイライト判定用なので、追跡結果では返さない（詳細 API で読める）。
+                JsonObject item = rowJson(e, null);
+                item.addProperty("anchor", r.anchorIds.contains(e.id));
+                items.add(item);
+            }
+            o.add("items", items);
+            requests.add(o);
+        }
+        payload.add("requests", requests);
+        sendJson(ex, 200, payload);
     }
 
     // ---- 静的ファイル -----------------------------------------------------

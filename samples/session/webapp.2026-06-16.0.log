@@ -1,0 +1,5 @@
+2026-06-16 09:59:58.100[http-nio-8080-exec-7][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /health
+2026-06-16 09:59:58.105[http-nio-8080-exec-7][INFO][com.example.web.RequestLogFilter] - リクエスト終了 status=200 elapsed=5ms
+2026-06-16 09:59:59.500[http-nio-8080-exec-4][INFO][com.example.web.RequestLogFilter] - リクエスト開始 GET /cart
+2026-06-16 09:59:59.520[http-nio-8080-exec-4][DEBUG][com.example.web.SessionInterceptor] - セッションを確認 sessionId=8F3A2C91D4E6B7A0.node1
+2026-06-16 09:59:59.980[http-nio-8080-exec-4][DEBUG][com.example.service.CartService] - カートを読み込みます userId=u1001

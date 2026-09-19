@@ -57,6 +57,7 @@ java -jar target\aplv-java.jar --dir C:\logs\app --port 8766
 - `POST /api/load` — `{"directory": "..."}` を受け取りインデックス構築開始
 - `GET /api/logs?level=&logger=&thread=&message=&grep=&source=&since=&until=&limit=&offset=` — フィルタ付き一覧
 - `GET /api/logs/detail?source=&line_no=&timestamp=` — スタックトレース含む生ログ
+- `GET /api/session-trace?id=&start=&end=&max_minutes=` — セッション ID を含むリクエストのログを、リクエストごとにまとめて返す
 
 ## 対応ログ形式
 

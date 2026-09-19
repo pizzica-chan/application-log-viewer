@@ -107,6 +107,56 @@
     <p id="range-hint" class="range-hint"></p>
   </section>
 
+  <!--
+    セッション追跡。使わない人の邪魔にならないよう、検索条件とは別の欄にして既定では閉じておく。
+    ここの入力は検索条件（保存・件数表示・リセット）の対象外。
+  -->
+  <details id="session-trace" class="session-trace">
+    <summary>セッション追跡 <span class="session-trace-lead">— セッション ID を含むリクエストのログを、リクエストごとにまとめて表示</span></summary>
+    <div class="session-trace-body">
+      <div class="session-trace-fields">
+        <label class="session-trace-id">
+          セッション ID など（文字列・大文字小文字を区別）
+          <input id="trace-id" placeholder="例: 8F3A2C91D4E6B7A0.node1">
+        </label>
+        <label>
+          リクエストのはじまり (正規表現)
+          <input id="trace-start" placeholder="例: ^リクエスト開始">
+        </label>
+        <label>
+          リクエストのおわり (正規表現)
+          <input id="trace-end" placeholder="例: ^リクエスト終了">
+        </label>
+        <label class="session-trace-minutes">
+          最大所要時間（分）
+          <input id="trace-max-minutes" type="number" min="1" max="1440" step="1" value="10">
+        </label>
+        <button id="trace-run" type="button">追跡</button>
+        <button id="trace-clear" type="button">一覧に戻る</button>
+      </div>
+      <details class="session-trace-limits">
+        <summary>判定方法と制限事項</summary>
+        <p>
+          セッション ID を含む行を起点に、<strong>同じログファイル・同じスレッド</strong>で
+          「はじまり」から「おわり」までを 1 リクエストとして表示します。
+          はじまり・おわりはメッセージ（1 行目）への正規表現で判定します（大文字小文字は区別しません）。
+          セッション ID はスタックトレースを含むエントリ全体から、正規表現ではなく文字列として探します。
+        </p>
+        <ul>
+          <li><strong>同期処理が前提です。</strong>1 リクエストを 1 スレッドが最後まで処理するアプリ（Tomcat + Spring MVC など）で正しく判定できます。</li>
+          <li><strong>非同期処理で別スレッドに出たログは含まれません。</strong>（<code>@Async</code>、<code>CompletableFuture</code>、<code>DeferredResult</code>、Servlet の非同期処理など）</li>
+          <li><strong>WebFlux / Netty など、1 スレッドで複数のリクエストを交互に処理する方式では正しく判定できません。</strong>範囲に他のリクエストのログが混ざります。</li>
+          <li>同じログファイルの中だけを見ます。リクエストの途中でローテートした場合や、レベル・ロガーごとにファイルを分けている場合は、他のファイルに出たログを取りこぼします。</li>
+          <li>おわりが出ないまま終わったリクエストは、同じスレッドの次のはじまりの直前、または最大所要時間で打ち切ります（「おわり未検出」と表示）。</li>
+          <li>はじまりが見つからなくても、次のはじまりより先におわりがあれば 1 リクエストとして扱います（「はじまり不明」と表示）。</li>
+          <li>どのリクエストの範囲にも入らない行（セッション破棄のログなど）は、その行だけを「単独の行」として表示します。</li>
+          <li>スレッド名を出力しない行は、同じスレッドの行を判断できないため単独の行になります。Spring Boot 既定の書式はスレッド名を 15 文字に切り詰めるため、まれに別スレッドと区別できないことがあります。</li>
+          <li>表示するのは最大 200 リクエスト、1 リクエストあたり最大 1,000 行です。</li>
+        </ul>
+      </details>
+    </div>
+  </details>
+
   <section class="toolbar">
     <div class="toolbar-left">
       <span id="result-count"></span>

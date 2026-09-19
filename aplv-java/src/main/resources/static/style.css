@@ -340,6 +340,126 @@ button {
   color: var(--text);
 }
 
+/*
+ * セッション追跡。検索条件とは別の欄にして既定では閉じておく（使わない人には 1 行だけ）。
+ */
+.session-trace {
+  padding: 0.45rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 0.8125rem;
+}
+
+.session-trace > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.session-trace-lead {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.session-trace-body {
+  margin-top: 0.5rem;
+}
+
+.session-trace-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.45rem 0.7rem;
+}
+
+.session-trace-fields > label {
+  flex: 1 1 12rem;
+  min-width: 10rem;
+  max-width: 20rem;
+}
+
+.session-trace-fields > label.session-trace-minutes {
+  flex: 0 0 7.5rem;
+  min-width: 7.5rem;
+}
+
+#trace-clear {
+  background: transparent;
+  color: var(--text);
+}
+
+.session-trace-limits {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.session-trace-limits > summary {
+  cursor: pointer;
+  color: var(--warn);
+}
+
+.session-trace-limits p,
+.session-trace-limits ul {
+  margin: 0.35rem 0 0;
+  line-height: 1.55;
+}
+
+.session-trace-limits ul {
+  padding-left: 1.25rem;
+}
+
+.session-trace-limits strong {
+  color: var(--text);
+}
+
+/* 追跡結果: リクエストごとの見出し行と、セッション ID を含む行 */
+tbody tr.trace-group {
+  cursor: default;
+  background: var(--panel);
+}
+
+tbody tr.trace-group:hover {
+  background: var(--panel);
+}
+
+tbody tr.trace-group td {
+  padding-top: 0.7rem;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.trace-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--warn);
+  border-radius: 999px;
+  color: var(--warn);
+  font-size: 0.6875rem;
+  font-weight: 400;
+}
+
+.trace-badge.ok {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.trace-group-meta {
+  margin-left: 0.5rem;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+
+tbody tr.trace-anchor td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+tbody tr.trace-anchor td.message {
+  font-weight: 600;
+}
+
 .toolbar {
   display: flex;
   justify-content: space-between;
