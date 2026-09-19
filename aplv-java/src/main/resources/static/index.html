@@ -42,21 +42,23 @@
     条件欄はタブで切り替える。通常の検索条件はリクエスト追跡には効かないため、
     同時に見せずに切り替える形にしてある（結果の表・ハイライト・ページャは共通）。
   -->
-  <div class="mode-tabs" role="tablist" aria-label="条件の種類">
-    <button type="button" id="tab-search" class="mode-tab" role="tab"
-            aria-selected="true" aria-controls="panel-search">検索</button>
-    <button type="button" id="tab-trace" class="mode-tab" role="tab"
-            aria-selected="false" aria-controls="panel-trace">リクエスト追跡</button>
-  </div>
-
-  <section class="filters" id="panel-search" role="tabpanel" aria-labelledby="tab-search">
-    <div class="filters-toolbar">
-      <span class="filters-toolbar-label">検索条件</span>
+  <div class="mode-tabs">
+    <div class="mode-tab-list" role="tablist" aria-label="条件の種類">
+      <button type="button" id="tab-search" class="mode-tab" role="tab"
+              aria-selected="true" aria-controls="panel-search">検索</button>
+      <button type="button" id="tab-trace" class="mode-tab" role="tab"
+              aria-selected="false" aria-controls="panel-trace">リクエスト追跡</button>
+    </div>
+    <!-- どちらのタブにも効く操作（保存・折りたたみは選んでいるタブが対象） -->
+    <div class="mode-tab-actions" id="tab-actions">
       <button type="button" id="regex-samples" class="chip">正規表現サンプル</button>
       <button type="button" id="saved-searches" class="chip">保存した検索条件</button>
       <button type="button" id="filters-toggle" class="chip" aria-expanded="true" aria-controls="filters-fields">折りたたむ</button>
       <span id="filters-summary" class="filters-summary" hidden></span>
     </div>
+  </div>
+
+  <section class="filters" id="panel-search" role="tabpanel" aria-labelledby="tab-search">
     <div id="filters-fields" class="filters-fields">
     <label>
       レベル
@@ -124,6 +126,7 @@
   <section id="panel-trace" class="session-trace" role="tabpanel" aria-labelledby="tab-trace" hidden>
     <div class="session-trace-body">
       <p class="session-trace-lead">セッション ID を含むリクエストのログを、リクエストごとにまとめて表示します。</p>
+      <div id="trace-fields">
       <div class="session-trace-fields">
         <label class="session-trace-id">
           セッション ID など（文字列・大文字小文字を区別）
@@ -151,6 +154,9 @@
           この語を含むリクエストを除く (正規表現)
           <input id="trace-excludes" placeholder="例: /health">
         </label>
+      </div>
+      </div>
+      <div class="session-trace-actions">
         <button id="trace-run" type="button">追跡</button>
         <button id="trace-clear" type="button">検索結果に戻る</button>
       </div>
@@ -175,6 +181,7 @@
           <li>「この語を含む／含まないリクエスト」の絞り込みは、行ではなく<strong>リクエストの塊</strong>単位です。どれか 1 行でも一致すれば、そのリクエスト全体を残す（除く）ことになります。判定はスタックトレースを含むエントリ全体に対して行います。</li>
           <li>絞り込みで落とすリクエストも 1 件として数えるため、除外が多いときは調べる件数の上限（2,000 リクエスト）で打ち切ることがあります。</li>
           <li>絞り込みの判定に使うのは、1 リクエストあたり最大 1,000 行の表示対象だけです。1,000 行を超えたリクエストでは、切り落とした後ろにしか無い語では絞り込めません。</li>
+          <li>1,000 行で切ったリクエストでは、切り落とした後ろにあるセッション ID の行も同じリクエストとして扱います。「ID を含む行」の件数には入りますが、行としては表示しません。</li>
           <li>追跡結果の「マッチ行をハイライト」は、時刻・レベル・ロガー・スレッド・メッセージ（1 行目）・ログファイルだけで判定します。スタックトレースの中にしか無い語は色が付きません（通常の一覧ではスタックトレースも対象です）。</li>
           <li>「検索」タブの条件（レベル・期間など）は追跡には効きません。リクエスト内の行はレベルに関係なくすべて表示します。検索タブで「検索」を押すか、「検索結果に戻る」で通常の一覧に戻ります。</li>
         </ul>
@@ -255,8 +262,9 @@
     <form method="dialog" class="regex-samples-form">
       <h2>正規表現サンプル</h2>
       <p class="regex-samples-note">
-        ロガー・スレッド・メッセージ・全文検索・ログファイルの各フィールドは正規表現に対応しています。
-        マッチは大文字小文字を区別しません。
+        検索タブのロガー・スレッド・メッセージ・全文検索・ログファイルと、
+        リクエスト追跡タブのはじまり・おわり・絞り込みの 2 欄が正規表現に対応しています。
+        マッチは大文字小文字を区別しません（セッション ID だけは正規表現ではなく文字列として扱います）。
       </p>
       <table class="regex-samples-table">
         <thead>
@@ -340,7 +348,7 @@
 
   <dialog id="saved-searches-dialog">
     <form method="dialog" class="saved-searches-form">
-      <h2>保存した検索条件</h2>
+      <h2 id="saved-searches-title">保存した検索条件</h2>
       <div class="saved-search-save">
         <input id="saved-search-name" placeholder="名前を付けて保存" maxlength="100">
         <button type="button" id="saved-search-save">現在の条件を保存</button>

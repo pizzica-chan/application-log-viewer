@@ -217,20 +217,6 @@ header h1 {
   max-width: 13rem;
 }
 
-.filters-toolbar {
-  flex: 1 0 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0.75rem;
-}
-
-.filters-toolbar-label {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--text);
-}
-
 .datetime-filter {
   flex: 1 0 100%;
   display: flex;
@@ -351,9 +337,30 @@ button {
 /* 条件欄のタブ。選んだタブのパネルだけを出す */
 .mode-tabs {
   display: flex;
-  gap: 0.25rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.25rem;
   padding: 0.45rem 1.25rem 0;
   background: var(--panel);
+}
+
+.mode-tab-list {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* 検索条件に効く操作はタブのすぐ右に続けて置く */
+.mode-tab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.75rem;
+  padding-bottom: 0.35rem;
+}
+
+.mode-tab-actions[hidden] {
+  display: none;
 }
 
 .mode-tab {
@@ -423,6 +430,13 @@ button {
  */
 .session-trace[hidden] {
   display: none;
+}
+
+/* 実行ボタンは折りたたみの対象外（畳んでも押せるように、入力欄の外に置く） */
+.session-trace-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
 }
 
 #trace-clear {
@@ -618,6 +632,23 @@ tbody tr.trace-anchor td.message {
   flex-direction: column;
   gap: 0.1rem;
   min-width: 0;
+}
+
+/* 保存した条件が、検索と追跡のどちらのものかを示す小さな札 */
+.saved-search-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.saved-search-mode {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.6875rem;
 }
 
 .saved-search-name {

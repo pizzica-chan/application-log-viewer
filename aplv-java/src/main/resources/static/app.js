@@ -46,6 +46,8 @@ const els = {
   filtersSummary: document.getElementById("filters-summary"),
   savedSearches: document.getElementById("saved-searches"),
   savedSearchesDialog: document.getElementById("saved-searches-dialog"),
+  savedSearchesTitle: document.getElementById("saved-searches-title"),
+  traceFields: document.getElementById("trace-fields"),
   savedSearchName: document.getElementById("saved-search-name"),
   savedSearchSave: document.getElementById("saved-search-save"),
   savedSearchList: document.getElementById("saved-search-list"),
@@ -406,6 +408,10 @@ function setLoadingUi(loading) {
   els.reset.disabled = loading;
   els.loadDir.disabled = loading;
   els.browse.disabled = loading;
+  // 追跡もインデックスが揃ってからでないと実行できない（押しても API が弾く）ので、
+  // 検索ボタンと同じように読み込み中は押せなくしておく
+  els.traceRun.disabled = loading;
+  els.traceClear.disabled = loading;
 }
 
 function clearLoadPoll() {
@@ -659,8 +665,10 @@ function applySourceDisplay() {
 
 /**
  * 検索条件の保存・呼び出し（localStorage、ブラウザ単位）。
- * ハイライトやフルパス表示など表示設定は対象外。検索条件欄（.filters）の
- * input/select を id -> value のマップとして保存し、適用時は同じ id の要素へ書き戻す。
+ * ハイライトやフルパス表示など表示設定は対象外。いま選んでいるタブの input/select を
+ * id -> value のマップとして保存し、適用時は同じ id の要素へ書き戻す。
+ * どちらのタブで保存したかを mode に持ち、適用時はそのタブへ切り替えて実行する
+ * （mode を持たない古い保存データは検索タブのものとして扱う）。
  */
 const SAVED_SEARCHES_KEY = "aplv.savedSearches";
 
@@ -685,9 +693,20 @@ function writeSavedSearches(list) {
   }
 }
 
+/** いま選んでいるタブ（"search" / "trace"）。 */
+function activeTab() {
+  return els.panelTrace.hidden ? "search" : "trace";
+}
+
+/** タブごとの入力欄・折りたたみ対象・保存した条件の呼び名。 */
+const TAB_UI = {
+  search: { panel: () => els.panelSearch, fields: () => els.filtersFields, label: "検索" },
+  trace: { panel: () => els.panelTrace, fields: () => els.traceFields, label: "追跡" },
+};
+
 function collectFilterFields() {
   const fields = {};
-  for (const el of document.querySelectorAll(".filters input[id], .filters select[id]")) {
+  for (const el of TAB_UI[activeTab()].panel().querySelectorAll("input[id], select[id]")) {
     fields[el.id] = el.value;
   }
   return fields;
@@ -702,6 +721,7 @@ function applyFilterFields(fields) {
   // 検索すれば同じ分の範囲になるため、古い厳密範囲は捨てる（秒精度までは再現しない）。
   clearExactQueryRange();
   updateRangeUi();
+  updateFiltersSummary();
 }
 
 function formatSavedAt(iso) {
@@ -725,10 +745,17 @@ function renderSavedSearchList() {
     name.className = "saved-search-name";
     name.textContent = saved.name;
     name.title = saved.name;
+    const mode = document.createElement("span");
+    mode.className = "saved-search-mode";
+    mode.textContent = saved.mode === "trace" ? "追跡" : "検索";
     const date = document.createElement("span");
     date.className = "saved-search-date";
     date.textContent = formatSavedAt(saved.savedAt);
-    info.appendChild(name);
+    const nameRow = document.createElement("div");
+    nameRow.className = "saved-search-name-row";
+    nameRow.appendChild(mode);
+    nameRow.appendChild(name);
+    info.appendChild(nameRow);
     info.appendChild(date);
 
     const buttons = document.createElement("div");
@@ -737,10 +764,16 @@ function renderSavedSearchList() {
     applyBtn.type = "button";
     applyBtn.textContent = "適用";
     applyBtn.addEventListener("click", () => {
+      const mode = saved.mode === "trace" ? "trace" : "search";
+      setActiveTab(mode);
       applyFilterFields(saved.fields);
       els.savedSearchesDialog.close();
       offset = 0;
-      loadLogs();
+      if (mode === "trace") {
+        runSessionTrace();
+      } else {
+        loadLogs();
+      }
     });
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
@@ -768,18 +801,22 @@ function saveCurrentSearch() {
     return;
   }
   const list = loadSavedSearches();
-  const existing = list.find((s) => s.name === name);
+  const mode = activeTab();
+  // 同じ名前でも、検索と追跡は別の条件として保存する
+  const existing = list.find((s) => s.name === name && (s.mode === "trace" ? "trace" : "search") === mode);
   if (existing && !confirm(`「${name}」は既に保存されています。上書きしますか？`)) return;
   const fields = collectFilterFields();
   const savedAt = new Date().toISOString();
   if (existing) {
     existing.fields = fields;
     existing.savedAt = savedAt;
+    existing.mode = mode;
   } else {
     list.push({
       id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
       name,
       savedAt,
+      mode,
       fields,
     });
   }
@@ -1069,6 +1106,10 @@ function setActiveTab(tab) {
   const trace = tab === "trace";
   els.panelSearch.hidden = trace;
   els.panelTrace.hidden = !trace;
+  // 折りたたみボタンと件数表示は、選んでいるタブのものに合わせる
+  setFiltersCollapsed(TAB_UI[trace ? "trace" : "search"].fields().hidden);
+  els.savedSearchesTitle.textContent =
+    trace ? "保存した条件（リクエスト追跡）" : "保存した検索条件";
   els.tabSearch.setAttribute("aria-selected", String(!trace));
   els.tabTrace.setAttribute("aria-selected", String(trace));
   try {
@@ -1167,46 +1208,60 @@ const FILTERS_COLLAPSED_KEY = "aplv.filtersCollapsed";
  * 表示件数（page-limit）は絞り込み条件ではないので数えない。
  */
 function countActiveFilters() {
-  const datetimeIds = ["since-date", "since-time", "until-date", "until-time"];
+  // 件数に数えない欄（表示件数・最大所要時間は絞り込み条件ではない。期間は 4 欄で 1 つと数える）
+  const skipIds = ["page-limit", "trace-max-minutes",
+    "since-date", "since-time", "until-date", "until-time"];
   let count = 0;
-  for (const el of document.querySelectorAll(".filters input[id], .filters select[id]")) {
-    if (el.id === "page-limit" || datetimeIds.indexOf(el.id) >= 0) continue;
+  for (const el of TAB_UI[activeTab()].panel().querySelectorAll("input[id], select[id]")) {
+    if (skipIds.indexOf(el.id) >= 0) continue;
     if (el.value.trim()) count += 1;
   }
-  if (els.sinceDate.value || els.untilDate.value) count += 1;
+  if (activeTab() === "search" && (els.sinceDate.value || els.untilDate.value)) count += 1;
   return count;
 }
 
-/** 件数表示を現在の入力に合わせる。折りたたんでいるときだけ表示する。 */
+/** 件数表示を現在のタブの入力に合わせる。折りたたんでいるときだけ表示する。 */
 function updateFiltersSummary() {
   const count = countActiveFilters();
   els.filtersSummary.textContent = count > 0 ? `条件 ${count} 件` : "条件なし";
-  els.filtersSummary.hidden = !els.filtersFields.hidden;
+  els.filtersSummary.hidden = !TAB_UI[activeTab()].fields().hidden;
 }
 
-function setFiltersCollapsed(collapsed) {
-  els.filtersFields.hidden = collapsed;
-  els.filtersToggle.textContent = collapsed ? "展開する" : "折りたたむ";
-  els.filtersToggle.setAttribute("aria-expanded", String(!collapsed));
-  updateFiltersSummary();
+function setFiltersCollapsed(collapsed, tab) {
+  const target = tab || activeTab();
+  const fields = TAB_UI[target].fields();
+  fields.hidden = collapsed;
+  if (target === activeTab()) {
+    els.filtersToggle.setAttribute("aria-controls", fields.id);
+    els.filtersToggle.textContent = collapsed ? "展開する" : "折りたたむ";
+    els.filtersToggle.setAttribute("aria-expanded", String(!collapsed));
+    updateFiltersSummary();
+  }
+}
+
+/** 折りたたみ状態をタブごとに覚える。 */
+function storedCollapsed(tab) {
+  try {
+    return localStorage.getItem(FILTERS_COLLAPSED_KEY + "." + tab) === "1";
+  } catch (e) {
+    return false;
+  }
 }
 
 els.filtersToggle.addEventListener("click", () => {
-  const collapsed = !els.filtersFields.hidden;
-  setFiltersCollapsed(collapsed);
+  const tab = activeTab();
+  const collapsed = !TAB_UI[tab].fields().hidden;
+  setFiltersCollapsed(collapsed, tab);
   try {
-    localStorage.setItem(FILTERS_COLLAPSED_KEY, collapsed ? "1" : "");
+    localStorage.setItem(FILTERS_COLLAPSED_KEY + "." + tab, collapsed ? "1" : "");
   } catch (e) {
     // ストレージが使えなくても表示の切り替え自体は継続する
   }
 });
 
-// 前回の開閉状態を復元する（ブラウザ単位。読めない/壊れていても既定の展開状態にする）
-try {
-  setFiltersCollapsed(localStorage.getItem(FILTERS_COLLAPSED_KEY) === "1");
-} catch (e) {
-  setFiltersCollapsed(false);
-}
+// 前回の開閉状態をタブごとに復元する（読めない/壊れていても既定の展開状態にする）
+setFiltersCollapsed(storedCollapsed("search"), "search");
+setFiltersCollapsed(storedCollapsed("trace"), "trace");
 
 /**
  * ハイライトの語はブラウザに覚えておく（検索条件の保存とは別。表示だけの設定なので
