@@ -31,6 +31,8 @@ tags:
     description: ログ検索・詳細
   - name: session
     description: セッション追跡（同一リクエストのログの抽出）
+  - name: saved-searches
+    description: 検索・追跡条件の保存（ツールホーム直下の JSON ファイル）
 
 paths:
   /api/meta:
@@ -346,23 +348,46 @@ paths:
           schema:
             type: string
           example: 8F3A2C91D4E6B7A0.node1
+        - name: mode
+          in: query
+          description: |
+            範囲の決め方。
+            - `boundary`（既定） — `start` / `end` の語で区切る。`start` と `end` が必須
+            - `window` — セッション ID のある行の前後 `window_secs` 秒にある、
+              同じファイル・同じスレッドの行を 1 リクエストとみなす。語の指定は不要。
+              時間だけで区切るため、同じスレッドが直前・直後に処理した別のリクエストの行が
+              混ざることがある（誤検知）。ID が窓の内に続けて出たときは 1 つにまとめる
+          required: false
+          schema:
+            type: string
+            enum: [boundary, window]
+            default: boundary
+        - name: window_secs
+          in: query
+          description: '`mode=window` のとき、ID の行の前後に見る秒数'
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3600
+            default: 10
         - name: start
           in: query
-          description: リクエストのはじまりの 1 行目メッセージに一致する正規表現（大文字小文字無視）
-          required: true
+          description: リクエストのはじまりの 1 行目メッセージに一致する正規表現（大文字小文字無視。`mode=boundary` で必須）
+          required: false
           schema:
             type: string
           example: ^リクエスト開始
         - name: end
           in: query
-          description: リクエストのおわりの 1 行目メッセージに一致する正規表現（大文字小文字無視）
-          required: true
+          description: リクエストのおわりの 1 行目メッセージに一致する正規表現（大文字小文字無視。`mode=boundary` で必須）
+          required: false
           schema:
             type: string
           example: ^リクエスト終了
         - name: max_minutes
           in: query
-          description: 1 リクエストの最大所要時間（分）。おわりが見つからないときの打ち切りに使う
+          description: 1 リクエストの最大所要時間（分）。起点からのはじまり探索とおわり探索の両方の打ち切りに使う（`mode=boundary` のみ）
           required: false
           schema:
             type: integer
@@ -404,6 +429,140 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: 読み込み失敗または内部エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/saved-searches:
+    get:
+      tags: [saved-searches]
+      summary: 保存した検索・追跡条件の一覧
+      description: |
+        ツールホーム直下（`APLV_HOME`。未設定時はリポジトリ直下）の `aplv-saved-searches.json` を読む。
+        条件に含まれる正規表現は文字列のまま返し、この API ではコンパイルもマッチも行わない。
+        ファイルが無いときは空の `items` を返す。壊れた項目や 200 件を超えた余りは読み飛ばし、
+        `skipped` に件数を入れる。
+      operationId: listSavedSearches
+      responses:
+        '200':
+          description: 保存条件の一覧
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedSearchListResponse'
+        '405':
+          description: 未対応の HTTP メソッド
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 保存ファイルが読めない、または JSON が不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [saved-searches]
+      summary: 検索・追跡条件を保存する
+      description: |
+        `name` と `mode` が同じ項目があれば上書きし、なければ追加する。
+        `fields` の値は正規表現を含みうるが、文字列として保存するだけ（妥当性は検証しない）。
+        未知のキーや、指定した `mode` 以外のタブの入力 id は捨てる。
+      operationId: upsertSavedSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedSearchUpsertRequest'
+            examples:
+              search:
+                summary: 検索条件
+                value:
+                  name: エラーだけ
+                  mode: search
+                  fields:
+                    level: ERROR
+                    grep: Exception\\d+
+              trace:
+                summary: 追跡条件
+                value:
+                  name: 決済
+                  mode: trace
+                  fields:
+                    trace-start: '^リクエスト開始'
+                    trace-end: '^リクエスト終了'
+      responses:
+        '200':
+          description: 保存した 1 件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedSearch'
+        '400':
+          description: 名前未指定、mode 不正、件数上限、JSON 不正、本文が大きすぎる
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 未対応の HTTP メソッド
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 保存ファイルの書き込み失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [saved-searches]
+      summary: 保存した条件を削除する
+      operationId: deleteSavedSearch
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: 保存時にサーバが採番した UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 削除した
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+                    enum: [true]
+        '400':
+          description: id 未指定または形式不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 指定した id が無い
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 未対応の HTTP メソッド
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 保存ファイルの書き込み失敗
           content:
             application/json:
               schema:
@@ -624,13 +783,14 @@ components:
           description: はじまりのメッセージを見つけたか
         end_reason:
           type: string
-          enum: [end, next_start, not_found, standalone]
+          enum: [end, next_start, not_found, standalone, window]
           description: |
             おわり側の閉じ方
             - `end` — おわりのメッセージで閉じた
             - `next_start` — おわりより先に同じスレッドの次のはじまりが来たので、その直前で閉じた
             - `not_found` — 最大所要時間・ファイル末尾・行数の上限までに閉じなかった
             - `standalone` — どのリクエストにも属さない単独の行
+            - `window` — `mode=window` で、前後の時間だけで区切った
         truncated:
           type: boolean
           description: 行数の上限（1000 行）で打ち切ったか
@@ -753,3 +913,61 @@ components:
         error:
           type: string
           description: エラーメッセージ
+
+    SavedSearchListResponse:
+      type: object
+      required: [items, skipped]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavedSearch'
+        skipped:
+          type: integer
+          minimum: 0
+          description: 壊れている、または 200 件を超えたために読み飛ばした件数
+        file:
+          type: string
+          description: 実際に読み書きしている保存ファイルの絶対パス（画面の表示用）
+
+    SavedSearchUpsertRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: 呼び出し用の名前。制御文字は不可
+        mode:
+          type: string
+          enum: [search, trace]
+          default: search
+          description: 検索タブかリクエスト追跡タブか
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            入力欄 id から値へのマップ。値は正規表現を含みうるが文字列として扱う。
+            未知のキー、および mode に属さないタブの id は保存時に捨てる。
+
+    SavedSearch:
+      type: object
+      required: [id, name, savedAt, mode, fields]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        savedAt:
+          type: string
+          description: 保存時刻（ISO-8601）。手編集では空文字もありうる
+        mode:
+          type: string
+          enum: [search, trace]
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: 入力欄 id から値へのマップ（正規表現は未コンパイルの文字列）

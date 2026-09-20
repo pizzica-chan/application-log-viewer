@@ -1,6 +1,12 @@
 # SQLite index (local)
 tmp/
 
+# Saved search conditions (tool home / repo root; APLV_HOME overrides)
+aplv-saved-searches.json
+aplv-saved-searches.json.tmp
+aplv-java/aplv-saved-searches.json
+aplv-java/aplv-saved-searches.json.tmp
+
 # Legacy index under log directories (no longer created)
 .aplv/
 

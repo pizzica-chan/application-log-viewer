@@ -52,6 +52,8 @@ const els = {
   savedSearchSave: document.getElementById("saved-search-save"),
   savedSearchList: document.getElementById("saved-search-list"),
   savedSearchEmpty: document.getElementById("saved-search-empty"),
+  savedSearchSkipped: document.getElementById("saved-search-skipped"),
+  savedSearchFile: document.getElementById("saved-search-file"),
   pageInfo: document.getElementById("page-info"),
   prev: document.getElementById("prev"),
   next: document.getElementById("next"),
@@ -73,7 +75,12 @@ const els = {
   tabTrace: document.getElementById("tab-trace"),
   panelSearch: document.getElementById("panel-search"),
   panelTrace: document.getElementById("panel-trace"),
+  traceMode: document.getElementById("trace-mode"),
   traceId: document.getElementById("trace-id"),
+  traceWindowSecs: document.getElementById("trace-window-secs"),
+  traceWindowField: document.getElementById("trace-window-field"),
+  traceMinutesField: document.getElementById("trace-minutes-field"),
+  traceWindowNote: document.getElementById("trace-window-note"),
   traceContains: document.getElementById("trace-contains"),
   traceExcludes: document.getElementById("trace-excludes"),
   traceStart: document.getElementById("trace-start"),
@@ -248,6 +255,9 @@ function msToApiDatetime(ms) {
 /** クイック選択ボタン用。手入力フィールドより優先する正確な since/until。 */
 let exactQueryRange = null;
 
+/** 直近の追跡で実際に使った前後の秒数（表示用。入力欄を後から変えてもずれないように持つ）。 */
+let lastTraceWindowSecs = "";
+
 /** 詳細ダイアログ表示中のログ時刻（ISO）。 */
 let detailTimestamp = null;
 /** 詳細ダイアログ表示中のログファイル / スレッド。 */
@@ -362,6 +372,7 @@ let lastPageItems = [];
 let currentPageLimit = DEFAULT_PAGE_LIMIT;
 /** 検索リクエストの通し番号。古いレスポンスで新しい結果を上書きしないために使う。 */
 let logsRequestSeq = 0;
+let savedSearchListSeq = 0;
 
 /** 各ハイライト欄の検索語（小文字化済み）。空欄は "" のまま位置を保つ。 */
 function getHighlightNeedles() {
@@ -664,33 +675,26 @@ function applySourceDisplay() {
 }
 
 /**
- * 検索条件の保存・呼び出し（localStorage、ブラウザ単位）。
+ * 検索条件の保存・呼び出し（サーバ側。ツールホーム直下の JSON）。
  * ハイライトやフルパス表示など表示設定は対象外。いま選んでいるタブの input/select を
  * id -> value のマップとして保存し、適用時は同じ id の要素へ書き戻す。
  * どちらのタブで保存したかを mode に持ち、適用時はそのタブへ切り替えて実行する
  * （mode を持たない古い保存データは検索タブのものとして扱う）。
+ *
+ * 条件値は正規表現を含みうるが、ここでは文字列として読み書きするだけ。
+ * JSON.parse した値を正規表現オブジェクトへはせず、入力欄へ戻すときにだけ使う。
  */
-const SAVED_SEARCHES_KEY = "aplv.savedSearches";
-
-function loadSavedSearches() {
-  try {
-    const raw = localStorage.getItem(SAVED_SEARCHES_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list : [];
-  } catch (e) {
-    return [];
+async function loadSavedSearches() {
+  const res = await fetch("/api/saved-searches", { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || "検索条件の読み込みに失敗しました。");
   }
-}
-
-/** 保存に失敗した場合は false を返す。呼び出し側は入力欄のクリアや再描画を行わない。 */
-function writeSavedSearches(list) {
-  try {
-    localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(list));
-    return true;
-  } catch (e) {
-    alert("検索条件の保存に失敗しました（ブラウザのストレージが使用できません）。");
-    return false;
-  }
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    skipped: typeof data.skipped === "number" ? data.skipped : 0,
+    file: typeof data.file === "string" ? data.file : "",
+  };
 }
 
 /** いま選んでいるタブ（"search" / "trace"）。 */
@@ -713,14 +717,22 @@ function collectFilterFields() {
 }
 
 function applyFilterFields(fields) {
+  const panel = TAB_UI[activeTab()].panel();
   for (const [id, value] of Object.entries(fields || {})) {
+    // 正規表現を含む値は文字列のまま入力欄へ戻す。id もリテラルとして扱い、
+    // セレクタ結合や他パネルの要素（ログディレクトリ等）へは書かない。
+    if (typeof id !== "string" || typeof value !== "string") continue;
     const el = document.getElementById(id);
-    if (el) el.value = value;
+    if (!el || !panel.contains(el)) continue;
+    if (el.tagName !== "INPUT" && el.tagName !== "SELECT") continue;
+    el.value = value;
   }
   // クイック範囲ボタンが設定する秒未満の精度は保存対象外。日時欄の値（分単位）で
   // 検索すれば同じ分の範囲になるため、古い厳密範囲は捨てる（秒精度までは再現しない）。
   clearExactQueryRange();
   updateRangeUi();
+  // 判定方法も書き戻されるので、入力欄の出し分けを合わせ直す
+  syncTraceMode();
   updateFiltersSummary();
 }
 
@@ -731,10 +743,36 @@ function formatSavedAt(iso) {
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
 }
 
-function renderSavedSearchList() {
-  const list = loadSavedSearches().sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
+async function renderSavedSearchList() {
+  const seq = (savedSearchListSeq += 1);
   els.savedSearchList.innerHTML = "";
+  els.savedSearchEmpty.hidden = false;
+  els.savedSearchEmpty.textContent = "読み込み中...";
+  if (els.savedSearchSkipped) els.savedSearchSkipped.hidden = true;
+  let loaded;
+  try {
+    loaded = await loadSavedSearches();
+  } catch (e) {
+    if (seq !== savedSearchListSeq) return;
+    els.savedSearchEmpty.textContent = e.message || "検索条件の読み込みに失敗しました。";
+    return;
+  }
+  if (seq !== savedSearchListSeq) return;
+  if (els.savedSearchFile) {
+    // パスは textContent で入れる（HTML として解釈させない）
+    els.savedSearchFile.textContent = loaded.file || "(取得できませんでした)";
+    els.savedSearchFile.title = loaded.file || "";
+  }
+  const list = loaded.items.slice().sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
+  els.savedSearchEmpty.textContent = "保存した検索条件はまだありません。";
   els.savedSearchEmpty.hidden = list.length > 0;
+  if (els.savedSearchSkipped) {
+    els.savedSearchSkipped.hidden = loaded.skipped <= 0;
+    els.savedSearchSkipped.textContent =
+      loaded.skipped > 0
+        ? `読めなかった項目が ${loaded.skipped} 件あります（次の保存でファイルから消えます）。`
+        : "";
+  }
   for (const saved of list) {
     const li = document.createElement("li");
     li.className = "saved-search-item";
@@ -779,10 +817,21 @@ function renderSavedSearchList() {
     deleteBtn.type = "button";
     deleteBtn.className = "saved-search-delete";
     deleteBtn.textContent = "削除";
-    deleteBtn.addEventListener("click", () => {
+    deleteBtn.addEventListener("click", async () => {
       if (!confirm(`「${saved.name}」を削除しますか？`)) return;
-      writeSavedSearches(loadSavedSearches().filter((s) => s.id !== saved.id));
-      renderSavedSearchList();
+      try {
+        const params = new URLSearchParams();
+        params.set("id", saved.id);
+        const res = await fetch("/api/saved-searches?" + params, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(data.error || "削除に失敗しました。");
+          return;
+        }
+        await renderSavedSearchList();
+      } catch (e) {
+        alert(e.message || "削除に失敗しました。");
+      }
     });
     buttons.appendChild(applyBtn);
     buttons.appendChild(deleteBtn);
@@ -794,35 +843,35 @@ function renderSavedSearchList() {
 }
 
 /** 現在の検索条件欄の内容に名前を付けて保存する。同名があれば確認のうえ上書きする。 */
-function saveCurrentSearch() {
+async function saveCurrentSearch() {
   const name = els.savedSearchName.value.trim();
   if (!name) {
     alert("名前を入力してください。");
     return;
   }
-  const list = loadSavedSearches();
   const mode = activeTab();
-  // 同じ名前でも、検索と追跡は別の条件として保存する
-  const existing = list.find((s) => s.name === name && (s.mode === "trace" ? "trace" : "search") === mode);
-  if (existing && !confirm(`「${name}」は既に保存されています。上書きしますか？`)) return;
-  const fields = collectFilterFields();
-  const savedAt = new Date().toISOString();
-  if (existing) {
-    existing.fields = fields;
-    existing.savedAt = savedAt;
-    existing.mode = mode;
-  } else {
-    list.push({
-      id: String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8),
-      name,
-      savedAt,
-      mode,
-      fields,
+  try {
+    const loaded = await loadSavedSearches();
+    // 同じ名前でも、検索と追跡は別の条件として保存する
+    const existing = loaded.items.find(
+      (s) => s.name === name && (s.mode === "trace" ? "trace" : "search") === mode
+    );
+    if (existing && !confirm(`「${name}」は既に保存されています。上書きしますか？`)) return;
+    const res = await fetch("/api/saved-searches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, mode, fields: collectFilterFields() }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || "検索条件の保存に失敗しました。");
+      return;
+    }
+    els.savedSearchName.value = "";
+    await renderSavedSearchList();
+  } catch (e) {
+    alert(e.message || "検索条件の保存に失敗しました。");
   }
-  if (!writeSavedSearches(list)) return;
-  els.savedSearchName.value = "";
-  renderSavedSearchList();
 }
 
 function addCell(tr, content, options = {}) {
@@ -956,6 +1005,9 @@ function loadTraceSettings() {
     if (saved.maxMinutes) els.traceMaxMinutes.value = String(saved.maxMinutes);
     if (typeof saved.contains === "string") els.traceContains.value = saved.contains;
     if (typeof saved.excludes === "string") els.traceExcludes.value = saved.excludes;
+    if (saved.mode === "window" || saved.mode === "boundary") els.traceMode.value = saved.mode;
+    if (saved.windowSecs) els.traceWindowSecs.value = String(saved.windowSecs);
+    syncTraceMode();
   } catch (e) {
     // 読めなくても既定値のまま使える
   }
@@ -971,6 +1023,8 @@ function saveTraceSettings() {
         maxMinutes: els.traceMaxMinutes.value,
         contains: els.traceContains.value,
         excludes: els.traceExcludes.value,
+        mode: els.traceMode.value,
+        windowSecs: els.traceWindowSecs.value,
       })
     );
   } catch (e) {
@@ -983,6 +1037,12 @@ function traceBadges(req) {
   const badges = [];
   if (req.end_reason === "standalone") {
     badges.push({ text: "単独の行（どのリクエストの範囲にも入らない）" });
+    return badges;
+  }
+  if (req.end_reason === "window") {
+    // 時間だけで区切ったので、はじまり・おわりの確からしさは示せない
+    badges.push({ text: `前後 ${lastTraceWindowSecs || "n"} 秒で区切り` });
+    if (req.truncated) badges.push({ text: "行数の上限で打ち切り" });
     return badges;
   }
   if (!req.start_found) badges.push({ text: "はじまり不明" });
@@ -1023,21 +1083,49 @@ function buildTraceGroupRow(req, index) {
   return tr;
 }
 
+/**
+ * 判定方法に合わせて入力欄を出し分ける。
+ * 時間窓モードでは、はじまり・おわり・最大所要時間は使わない。
+ */
+function syncTraceMode() {
+  const windowMode = els.traceMode.value === "window";
+  els.traceStart.closest("label").hidden = windowMode;
+  els.traceEnd.closest("label").hidden = windowMode;
+  els.traceMinutesField.hidden = windowMode;
+  els.traceWindowField.hidden = !windowMode;
+  els.traceWindowNote.hidden = !windowMode;
+}
+
 async function runSessionTrace() {
   const id = els.traceId.value.trim();
   const start = els.traceStart.value.trim();
   const end = els.traceEnd.value.trim();
+  const windowMode = els.traceMode.value === "window";
   if (!id) {
     alert("セッション ID を入力してください。");
     return;
   }
-  if (!start || !end) {
+  if (!windowMode && (!start || !end)) {
     alert("リクエストのはじまりとおわりを入力してください。");
     return;
   }
+  if (windowMode && !els.traceWindowSecs.value.trim()) {
+    alert("前後の秒数を入力してください。");
+    return;
+  }
   saveTraceSettings();
-  const params = new URLSearchParams({ id, start, end });
-  if (els.traceMaxMinutes.value.trim()) params.set("max_minutes", els.traceMaxMinutes.value.trim());
+  const params = new URLSearchParams({ id });
+  params.set("mode", windowMode ? "window" : "boundary");
+  if (windowMode) {
+    params.set("window_secs", els.traceWindowSecs.value.trim());
+    lastTraceWindowSecs = els.traceWindowSecs.value.trim();
+  } else {
+    params.set("start", start);
+    params.set("end", end);
+    if (els.traceMaxMinutes.value.trim()) {
+      params.set("max_minutes", els.traceMaxMinutes.value.trim());
+    }
+  }
   if (els.traceContains.value.trim()) params.set("contains", els.traceContains.value.trim());
   if (els.traceExcludes.value.trim()) params.set("excludes", els.traceExcludes.value.trim());
   // 一覧の検索と同じ通し番号を使い、後から始めた方の結果だけを描く
@@ -1092,6 +1180,11 @@ function renderSessionTrace(data) {
   applySourceDisplay();
 }
 
+els.traceMode.addEventListener("change", () => {
+  syncTraceMode();
+  saveTraceSettings();
+});
+syncTraceMode();
 els.traceRun.addEventListener("click", runSessionTrace);
 els.traceClear.addEventListener("click", () => loadLogs());
 loadTraceSettings();
@@ -1208,8 +1301,9 @@ const FILTERS_COLLAPSED_KEY = "aplv.filtersCollapsed";
  * 表示件数（page-limit）は絞り込み条件ではないので数えない。
  */
 function countActiveFilters() {
-  // 件数に数えない欄（表示件数・最大所要時間は絞り込み条件ではない。期間は 4 欄で 1 つと数える）
-  const skipIds = ["page-limit", "trace-max-minutes",
+  // 件数に数えない欄。表示件数・判定方法・最大所要時間・前後の秒数は、値が必ず入っていて
+  // 絞り込みの条件ではないため（期間は 4 欄で 1 つと数える）。
+  const skipIds = ["page-limit", "trace-mode", "trace-max-minutes", "trace-window-secs",
     "since-date", "since-time", "until-date", "until-time"];
   let count = 0;
   for (const el of TAB_UI[activeTab()].panel().querySelectorAll("input[id], select[id]")) {

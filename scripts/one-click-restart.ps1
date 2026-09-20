@@ -32,6 +32,11 @@ if (-not (Test-DockerDaemon)) {
 }
 
 Write-Host "==> repo: $RepoRoot"
+
+# up と同じく、マウント先の保存ファイルを先に用意する
+. "$PSScriptRoot\Initialize-SavedSearches.ps1"
+Initialize-SavedSearchesFile -RepoRoot $RepoRoot
+
 Write-Host "==> docker compose up -d --build --force-recreate app"
 & docker compose up -d --build --force-recreate app
 if ($LASTEXITCODE -ne 0) {

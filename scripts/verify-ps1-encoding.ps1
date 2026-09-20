@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   リポジトリ内の .ps1 / .psm1 が UTF-8 BOM かつ安全な引用符かを検証する。

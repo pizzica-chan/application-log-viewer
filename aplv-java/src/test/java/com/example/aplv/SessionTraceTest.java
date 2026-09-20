@@ -381,6 +381,279 @@ class SessionTraceTest {
         assertEquals(15, without.requests.size() + without.filteredOut);
     }
 
+    private static SessionTrace.Result runWindow(Path root, String content, String id,
+            int windowSeconds, String contains, String excludes) throws Exception {
+        Path log = writeLog(root, "app.log", content);
+        try (Connection conn = LogIndex.openOrCreate(root)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.DEFAULT);
+            return SessionTrace.byTimeWindow(id, windowSeconds)
+                    .withRequestFilter(QueryFilter.compileRegex(contains),
+                            QueryFilter.compileRegex(excludes))
+                    .run(conn);
+        }
+    }
+
+    /**
+     * 時間窓モード: はじまり・おわりの語を使わず、ID のある行の前後 n 秒で区切ること。
+     * 窓の外の行と、別スレッドの行は入らない。
+     */
+    @Test
+    void windowModeUsesTimeAroundAnchor(@TempDir Path tmp) throws Exception {
+        String content = line("10:00:00.000", "exec-1", "窓の外（前）")
+                + line("10:00:07.000", "exec-1", "窓の内（前）")
+                + line("10:00:08.000", "exec-2", "別スレッド")
+                + line("10:00:10.000", "exec-1", "id=" + SID)
+                + line("10:00:12.000", "exec-1", "窓の内（後）")
+                + line("10:00:20.000", "exec-1", "窓の外（後）");
+        SessionTrace.Result r = runWindow(tmp, content, SID, 5, null, null);
+        assertEquals(1, r.requests.size());
+        Request req = r.requests.get(0);
+        assertEquals(EndReason.WINDOW, req.endReason);
+        assertFalse(req.startFound);
+        assertEquals(java.util.Arrays.asList("窓の内（前）", "id=" + SID, "窓の内（後）"),
+                messages(req));
+    }
+
+    /** 窓の秒数を変えれば取り込む範囲も変わること。 */
+    @Test
+    void windowSecondsChangeTheRange(@TempDir Path tmp) throws Exception {
+        String content = line("10:00:00.000", "exec-1", "8 秒前")
+                + line("10:00:08.000", "exec-1", "id=" + SID)
+                + line("10:00:16.000", "exec-1", "8 秒後");
+        assertEquals(1, runWindow(tmp.resolve("a"), content, SID, 5, null, null)
+                .requests.get(0).entries.size());
+        assertEquals(3, runWindow(tmp.resolve("b"), content, SID, 10, null, null)
+                .requests.get(0).entries.size());
+    }
+
+    /**
+     * 窓どうしが重なるときは 1 つのリクエストに継ぎ足し、同じ行を 2 回出さないこと。
+     * 窓より離れた起点は別のリクエストになる。
+     */
+    @Test
+    void windowModeChainsOverlappingAnchors(@TempDir Path tmp) throws Exception {
+        String content = line("10:00:10.000", "exec-1", "id=" + SID + " 1 回目")
+                + line("10:00:12.000", "exec-1", "間の行")
+                + line("10:00:13.000", "exec-1", "id=" + SID + " 2 回目")
+                + line("10:00:40.000", "exec-1", "id=" + SID + " 別のリクエスト");
+        SessionTrace.Result r = runWindow(tmp, content, SID, 5, null, null);
+        assertEquals(3, r.anchorTotal);
+        assertEquals(2, r.requests.size());
+        assertEquals(3, r.requests.get(0).entries.size());
+        assertEquals(2, r.requests.get(0).anchorIds.size());
+        assertEquals(1, r.requests.get(1).entries.size());
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (Request req : r.requests) {
+            for (EntryRow e : req.entries) {
+                assertTrue(seen.add(e.id), "重複した行: " + e.message);
+            }
+        }
+    }
+
+    /** 継ぎ足しで増えた行に除外の語が出たら、そのリクエストを落とし直すこと。 */
+    @Test
+    void windowModeReappliesFilterAfterChaining(@TempDir Path tmp) throws Exception {
+        // 1 つ目の窓（5〜15 秒）には除外の語が無く、2 つ目の起点で窓が 19 秒まで伸びてから
+        // 17 秒の行が入る。継ぎ足しのあとに判定し直さないと、落とせないまま残る。
+        String content = line("10:00:10.000", "exec-1", "id=" + SID + " 1 回目")
+                + line("10:00:14.000", "exec-1", "id=" + SID + " 2 回目")
+                + line("10:00:17.000", "exec-1", "除外したい語 NG");
+        SessionTrace.Result kept = runWindow(tmp.resolve("a"), content, SID, 5, null, null);
+        assertEquals(1, kept.requests.size());
+        assertEquals(3, kept.requests.get(0).entries.size());
+
+        SessionTrace.Result dropped =
+                runWindow(tmp.resolve("b"), content, SID, 5, null, "除外したい語");
+        assertEquals(0, dropped.requests.size());
+        assertEquals(1, dropped.filteredOut);
+    }
+
+    /** 継ぎ足しで増えた行に「含む」の語が出たら、落としたリクエストを拾い直すこと。 */
+    @Test
+    void windowModeRecoversRequestWhenContainsAppears(@TempDir Path tmp) throws Exception {
+        // 1 つ目の窓には無く、継ぎ足しで入ってくる行にだけ「含む」の語がある
+        String content = line("10:00:10.000", "exec-1", "id=" + SID + " 1 回目")
+                + line("10:00:14.000", "exec-1", "id=" + SID + " 2 回目")
+                + line("10:00:17.000", "exec-1", "あとから出る語 OK");
+        SessionTrace.Result r = runWindow(tmp, content, SID, 5, "あとから出る語", null);
+        assertEquals(1, r.requests.size());
+        assertEquals(0, r.filteredOut);
+        assertEquals(3, r.requests.get(0).entries.size());
+    }
+
+    /** 時間窓モードでも、別ファイル・別スレッドの行は混ざらないこと。 */
+    @Test
+    void windowModeStaysWithinFileAndThread(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp);
+        Path a = writeLog(tmp, "app1.log",
+                line("10:00:10.000", "exec-1", "id=" + SID)
+                        + line("10:00:11.000", "exec-1", "同じスレッド"));
+        Path b = writeLog(tmp, "app2.log",
+                line("10:00:10.500", "exec-1", "別インスタンスの同名スレッド"));
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, java.util.Arrays.asList(a, b), null, false,
+                    LogFormat.DEFAULT);
+            SessionTrace.Result r = SessionTrace.byTimeWindow(SID, 5).run(conn);
+            assertEquals(1, r.requests.size());
+            assertEquals(2, r.requests.get(0).entries.size());
+            for (EntryRow e : r.requests.get(0).entries) {
+                assertTrue(e.source.endsWith("app1.log"), e.source);
+            }
+        }
+    }
+
+    /**
+     * ID が続けて出るあいだは 1 つのリクエストにまとめ、窓を右へ伸ばすこと。
+     * 最後の ID から窓のぶんだけ後ろの行も入る。
+     */
+    @Test
+    void windowModeExtendsWhileAnchorsContinue(@TempDir Path tmp) throws Exception {
+        String content = line("10:00:10.000", "exec-1", "id=" + SID + " 1 つ目")
+                + line("10:00:14.000", "exec-1", "id=" + SID + " 2 つ目")
+                + line("10:00:18.000", "exec-1", "2 つ目から 4 秒後の行")
+                + line("10:00:30.000", "exec-1", "ずっと後の行");
+        SessionTrace.Result r = runWindow(tmp, content, SID, 5, null, null);
+        assertEquals(1, r.requests.size());
+        Request req = r.requests.get(0);
+        assertEquals(2, req.anchorIds.size());
+        // 1 つ目の窓（〜15 秒）だけなら 18 秒の行は入らない。2 つ目の窓（〜19 秒）まで伸ばす
+        assertEquals(java.util.Arrays.asList("id=" + SID + " 1 つ目", "id=" + SID + " 2 つ目",
+                "2 つ目から 4 秒後の行"), messages(req));
+    }
+
+    /** 窓が重なる別のリクエストでも、同じ行を 2 度返さないこと。 */
+    @Test
+    void windowModeDoesNotRepeatRowsWhenWindowsOverlap(@TempDir Path tmp) throws Exception {
+        String content = line("10:00:10.000", "exec-1", "id=" + SID + " 1 回目")
+                + line("10:00:14.000", "exec-1", "重なりの中にある行")
+                + line("10:00:18.000", "exec-1", "id=" + SID + " 2 回目");
+        // 窓 5 秒: 1 回目の窓は 5〜15 秒、2 回目の窓は 13〜23 秒で 13〜15 秒が重なる。
+        // 起点どうしは 8 秒離れていてまとまらないが、14 秒の行は 1 回目にだけ入る。
+        SessionTrace.Result r = runWindow(tmp, content, SID, 5, null, null);
+        assertEquals(2, r.requests.size());
+        assertEquals(2, r.requests.get(0).entries.size());
+        assertEquals(1, r.requests.get(1).entries.size());
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (Request req : r.requests) {
+            for (EntryRow e : req.entries) {
+                assertTrue(seen.add(e.id), "重複した行: " + e.message);
+            }
+        }
+    }
+
+    /** 時間窓モードでも 1 リクエストあたりの行数の上限で打ち切ること。 */
+    @Test
+    void windowModeTruncatesAtRowLimit(@TempDir Path tmp) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        sb.append(line("10:00:00.000", "exec-1", "id=" + SID));
+        for (int i = 0; i < SessionTrace.MAX_ROWS_PER_REQUEST + 200; i++) {
+            sb.append(line(String.format("10:00:%02d.%03d", i / 1000, i % 1000), "exec-1",
+                    "行 " + i));
+        }
+        Request req = runWindow(tmp, sb.toString(), SID, 60, null, null).requests.get(0);
+        assertTrue(req.truncated);
+        assertEquals(SessionTrace.MAX_ROWS_PER_REQUEST, req.entries.size());
+    }
+
+    /**
+     * 行数の上限で切った後ろに ID があっても、窓の時間内なら同じリクエストとして扱うこと
+     * （切った行は返さないので、行の範囲では合流を判定できない）。
+     */
+    @Test
+    void windowModeMergesAnchorAfterRowLimit(@TempDir Path tmp) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        sb.append(line("10:00:00.000", "exec-1", "id=" + SID + " 1 つ目"));
+        for (int i = 0; i < SessionTrace.MAX_ROWS_PER_REQUEST + 200; i++) {
+            sb.append(line(String.format("10:00:%02d.%03d", 1 + i / 1000, i % 1000), "exec-1",
+                    "行 " + i));
+        }
+        sb.append(line("10:00:05.000", "exec-1", "id=" + SID + " 2 つ目"));
+        SessionTrace.Result r = runWindow(tmp, sb.toString(), SID, 60, null, null);
+        assertEquals(2, r.anchorTotal);
+        assertEquals(1, r.requests.size()); // 切った後ろの起点で新しいリクエストを作らない
+        Request req = r.requests.get(0);
+        assertTrue(req.truncated);
+        assertEquals(2, req.anchorIds.size());
+        assertEquals(SessionTrace.MAX_ROWS_PER_REQUEST, req.entries.size());
+    }
+
+    /**
+     * 起点より前が混んでいて件数上限に達しても、起点の行は必ず残ること。
+     * 窓の左端から順に詰めると、起点に届く前に上限へ達して ID の行が消えてしまう。
+     */
+    @Test
+    void windowModeKeepsAnchorWhenEarlierRowsOverflow(@TempDir Path tmp) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < SessionTrace.MAX_ROWS_PER_REQUEST + 200; i++) {
+            sb.append(line(String.format("10:00:%02d.%03d", i / 1000, i % 1000), "exec-1",
+                    "起点より前の行 " + i));
+        }
+        sb.append(line("10:00:05.000", "exec-1", "id=" + SID));
+        Request req = runWindow(tmp, sb.toString(), SID, 60, null, null).requests.get(0);
+        assertTrue(req.truncated);
+        assertEquals(SessionTrace.MAX_ROWS_PER_REQUEST / 2 + 1, req.entries.size());
+        assertEquals("id=" + SID, req.entries.get(req.entries.size() - 1).message);
+        assertEquals(1, req.anchorIds.size());
+        assertTrue(req.anchorIds.contains(req.entries.get(req.entries.size() - 1).id));
+    }
+
+    /** 起点の前後どちらも混んでいるとき、前側は上限の半分までにして後ろ側の余地を残すこと。 */
+    @Test
+    void windowModeSplitsRowLimitAroundAnchor(@TempDir Path tmp) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 800; i++) {
+            sb.append(line(String.format("10:00:%02d.%03d", i / 1000, i % 1000), "exec-1",
+                    "前 " + i));
+        }
+        sb.append(line("10:00:05.000", "exec-1", "id=" + SID));
+        for (int i = 0; i < 800; i++) {
+            sb.append(line(String.format("10:00:%02d.%03d", 6 + i / 1000, i % 1000), "exec-1",
+                    "後 " + i));
+        }
+        Request req = runWindow(tmp, sb.toString(), SID, 60, null, null).requests.get(0);
+        assertEquals(SessionTrace.MAX_ROWS_PER_REQUEST, req.entries.size());
+        assertEquals(SessionTrace.MAX_ROWS_PER_REQUEST / 2, indexOfAnchor(req));
+        assertTrue(messages(req).get(0).startsWith("前 "));
+        assertTrue(messages(req).get(req.entries.size() - 1).startsWith("後 "));
+    }
+
+    private static int indexOfAnchor(Request req) {
+        for (int i = 0; i < req.entries.size(); i++) {
+            if (req.anchorIds.contains(req.entries.get(i).id)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 起点と同じミリ秒に前後の行があっても、前側で入れた行を後ろ側で入れ直さないこと。
+     * （前側と後ろ側で 2 回に分けて取り込むため、同じ時刻の行が重なりうる）
+     */
+    @Test
+    void windowModeDoesNotRepeatRowsOnTheSameMillisecond(@TempDir Path tmp) throws Exception {
+        String content = line("10:00:10.000", "exec-1", "同じ時刻の前の行")
+                + line("10:00:10.000", "exec-1", "id=" + SID)
+                + line("10:00:10.000", "exec-1", "同じ時刻の後の行");
+        Request req = runWindow(tmp, content, SID, 5, null, null).requests.get(0);
+        assertEquals(java.util.Arrays.asList("同じ時刻の前の行", "id=" + SID, "同じ時刻の後の行"),
+                messages(req));
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (EntryRow e : req.entries) {
+            assertTrue(seen.add(e.id), "重複した行: " + e.message);
+        }
+    }
+
+    /** 時間窓モードの引数の検証。 */
+    @Test
+    void windowModeRejectsInvalidArguments() {
+        assertThrows(IllegalArgumentException.class, () -> SessionTrace.byTimeWindow("", 5));
+        assertThrows(IllegalArgumentException.class, () -> SessionTrace.byTimeWindow(SID, 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> SessionTrace.byTimeWindow(SID, SessionTrace.MAX_WINDOW_SECONDS + 1));
+    }
+
     /** FTS5 で候補を絞っても、全件走査と同じ結果になること。 */
     @Test
     void ftsGivesSameResult(@TempDir Path tmp) throws Exception {

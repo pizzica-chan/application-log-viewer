@@ -128,6 +128,13 @@
       <p class="session-trace-lead">セッション ID を含むリクエストのログを、リクエストごとにまとめて表示します。</p>
       <div id="trace-fields">
       <div class="session-trace-fields">
+        <label class="session-trace-mode">
+          判定方法
+          <select id="trace-mode">
+            <option value="boundary">はじまり／おわりの語で区切る</option>
+            <option value="window">ID の前後 n 秒（お手軽・誤検知あり）</option>
+          </select>
+        </label>
         <label class="session-trace-id">
           セッション ID など（文字列・大文字小文字を区別）
           <input id="trace-id" placeholder="例: 8F3A2C91D4E6B7A0.node1">
@@ -140,10 +147,35 @@
           リクエストのおわり (正規表現)
           <input id="trace-end" placeholder="例: ^リクエスト終了">
         </label>
-        <label class="session-trace-minutes">
-          最大所要時間（分）
+        <div class="session-trace-minutes" id="trace-window-field" hidden>
+          <span class="field-label-row">
+            <label for="trace-window-secs">前後の秒数</label>
+            <span class="field-hint">
+              <button type="button" class="field-hint-trigger"
+                      aria-label="前後の秒数の説明" aria-describedby="trace-window-secs-hint">?</button>
+              <span id="trace-window-secs-hint" class="field-hint-popup" role="tooltip">
+                セッション ID が出た行の前後この秒数にある、同じログファイル・同じスレッドの行を
+                1 リクエストとみなします。短くすると同じリクエストの行を取りこぼし、
+                長くすると別のリクエストの行まで拾います（既定 10 秒）。
+              </span>
+            </span>
+          </span>
+          <input id="trace-window-secs" type="number" min="1" max="3600" step="1" value="10">
+        </div>
+        <div class="session-trace-minutes" id="trace-minutes-field">
+          <span class="field-label-row">
+            <label for="trace-max-minutes">最大所要時間（分）</label>
+            <span class="field-hint">
+              <button type="button" class="field-hint-trigger"
+                      aria-label="最大所要時間の説明" aria-describedby="trace-max-minutes-hint">?</button>
+              <span id="trace-max-minutes-hint" class="field-hint-popup" role="tooltip">
+                1 リクエストとみなす時間の上限です。セッション ID のある行から、はじまりを遡るときも
+                おわりを探すときも、この時間を超えたら打ち切ります（既定 10 分）。
+              </span>
+            </span>
+          </span>
           <input id="trace-max-minutes" type="number" min="1" max="1440" step="1" value="10">
-        </label>
+        </div>
       </div>
       <div class="session-trace-fields session-trace-narrow">
         <label>
@@ -160,13 +192,26 @@
         <button id="trace-run" type="button">追跡</button>
         <button id="trace-clear" type="button">検索結果に戻る</button>
       </div>
+      <p id="trace-window-note" class="session-trace-window-note" hidden>
+        <strong>お手軽ですが、誤検知があります。</strong>
+        はじまり・おわりの語を決めなくても使えますが、時間だけで区切るため、
+        スレッドの使い回しで<strong>直前・直後に同じスレッドが処理した別のリクエスト</strong>の行まで
+        取り込むことがあります（秒数が短ければ、逆に同じリクエストの行を取りこぼします）。
+        はじまり・おわりの語が分かっているなら、そちらのほうが正確です。
+      </p>
       <details class="session-trace-limits">
         <summary>判定方法と制限事項</summary>
         <p>
-          セッション ID を含む行を起点に、<strong>同じログファイル・同じスレッド</strong>で
-          「はじまり」から「おわり」までを 1 リクエストとして表示します。
-          はじまり・おわりはメッセージ（1 行目）への正規表現で判定します（大文字小文字は区別しません）。
-          セッション ID はスタックトレースを含むエントリ全体から、正規表現ではなく文字列として探します。
+          セッション ID を含む行を起点に、<strong>同じログファイル・同じスレッド</strong>の行を
+          1 リクエストとしてまとめます。どこで区切るかは「判定方法」で選びます。
+        </p>
+        <ul>
+          <li><strong>はじまり／おわりの語で区切る</strong>: 指定した語の行から語の行まで。判定はメッセージ（1 行目）への正規表現です（大文字小文字は区別しません）。</li>
+          <li><strong>ID の前後 n 秒</strong>: セッション ID の行の前後 n 秒にある行。語は使いません。ID が続けて出るあいだは 1 つにまとめます。</li>
+        </ul>
+        <p>
+          セッション ID はどちらの判定方法でも、スタックトレースを含むエントリ全体から、
+          正規表現ではなく文字列として探します。
         </p>
         <ul>
           <li><strong>同期処理が前提です。</strong>1 リクエストを 1 スレッドが最後まで処理するアプリ（Tomcat + Spring MVC など）で正しく判定できます。</li>
@@ -183,6 +228,7 @@
           <li>絞り込みの判定に使うのは、1 リクエストあたり最大 1,000 行の表示対象だけです。1,000 行を超えたリクエストでは、切り落とした後ろにしか無い語では絞り込めません。</li>
           <li>1,000 行で切ったリクエストでは、切り落とした後ろにあるセッション ID の行も同じリクエストとして扱います。「ID を含む行」の件数には入りますが、行としては表示しません。</li>
           <li>追跡結果の「マッチ行をハイライト」は、時刻・レベル・ロガー・スレッド・メッセージ（1 行目）・ログファイルだけで判定します。スタックトレースの中にしか無い語は色が付きません（通常の一覧ではスタックトレースも対象です）。</li>
+          <li>判定方法に「ID の前後 n 秒」を選ぶと、はじまり・おわりの語は使いません。時間だけで区切るため、同じスレッドが直前・直後に処理した別のリクエストの行が混ざることがあります（誤検知）。ID が近い時間に続けて出たときは、1 つのリクエストにまとめます。</li>
           <li>「検索」タブの条件（レベル・期間など）は追跡には効きません。リクエスト内の行はレベルに関係なくすべて表示します。検索タブで「検索」を押すか、「検索結果に戻る」で通常の一覧に戻ります。</li>
         </ul>
       </details>
@@ -349,12 +395,16 @@
   <dialog id="saved-searches-dialog">
     <form method="dialog" class="saved-searches-form">
       <h2 id="saved-searches-title">保存した検索条件</h2>
+      <p class="saved-search-file-hint">
+        保存先: <code id="saved-search-file">読み込み中...</code>
+      </p>
       <div class="saved-search-save">
         <input id="saved-search-name" placeholder="名前を付けて保存" maxlength="100">
         <button type="button" id="saved-search-save">現在の条件を保存</button>
       </div>
       <ul id="saved-search-list" class="saved-search-list"></ul>
       <p id="saved-search-empty" class="saved-search-empty" hidden>保存した検索条件はまだありません。</p>
+      <p id="saved-search-skipped" class="saved-search-empty" hidden></p>
       <div class="saved-searches-actions">
         <button type="submit">閉じる</button>
       </div>

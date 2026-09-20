@@ -57,7 +57,10 @@ java -jar target\aplv-java.jar --dir C:\logs\app --port 8766
 - `POST /api/load` — `{"directory": "..."}` を受け取りインデックス構築開始
 - `GET /api/logs?level=&logger=&thread=&message=&grep=&source=&since=&until=&limit=&offset=` — フィルタ付き一覧
 - `GET /api/logs/detail?source=&line_no=&timestamp=` — スタックトレース含む生ログ
-- `GET /api/session-trace?id=&start=&end=&max_minutes=` — セッション ID を含むリクエストのログを、リクエストごとにまとめて返す
+- `GET /api/session-trace?id=&mode=&start=&end=&max_minutes=&window_secs=&contains=&excludes=` — セッション ID を含むリクエストのログを、リクエストごとにまとめて返す（`mode=boundary` は語で区切る／`mode=window` は ID の前後 n 秒）
+- `GET /api/saved-searches` — 保存した検索・追跡条件の一覧（ホーム直下の JSON）
+- `POST /api/saved-searches` — 条件を保存（同名・同モードは上書き）
+- `DELETE /api/saved-searches?id=` — 保存した条件を削除
 
 ## 対応ログ形式
 

@@ -20,12 +20,18 @@ import com.example.aplv.LogIndex.EntryRow;
  * セッション追跡。セッション ID などの識別子が現れたエントリを起点に、
  * 同じリクエストのエントリをまとめて返す。
  *
- * <p>「同じリクエスト」は <strong>同一ログファイル・同一スレッドで、はじまり〜おわりの範囲</strong>
- * と判定する。同期型のサーブレットでは 1 リクエストを 1 スレッドが最後まで処理し、同じスレッドの
+ * <p>「同じリクエスト」は <strong>同一ログファイル・同一スレッド</strong>の範囲で判定する。
+ * 同期型のサーブレットでは 1 リクエストを 1 スレッドが最後まで処理し、同じスレッドの
  * リクエストは順番に処理されることを前提にしている。スレッドはプールで使い回されるため、
- * スレッドだけでは区切れず、はじまり・おわりのメッセージで区切る。
+ * スレッドだけでは区切れず、どこで区切るかを {@link Mode} で選ぶ。
  *
- * <p>範囲の決め方（起点ごと）:
+ * <ul>
+ *   <li>{@link Mode#BOUNDARY} — はじまり・おわりの語で区切る（既定。下の「範囲の決め方」）</li>
+ *   <li>{@link Mode#WINDOW} — 起点の前後一定時間で区切る（{@link #byTimeWindow}）。
+ *       語を決めなくてよい代わりに、別のリクエストの行を取り込むことがある</li>
+ * </ul>
+ *
+ * <p>範囲の決め方（{@link Mode#BOUNDARY} の場合。起点ごと）:
  * <ol>
  *   <li>起点から同じスレッドを遡り、最も近い「はじまり」を探す。途中で別の「おわり」に
  *       当たったら、起点はそのリクエストの後ろにあるので探索をやめる</li>
@@ -46,6 +52,8 @@ import com.example.aplv.LogIndex.EntryRow;
  *
  * <p>範囲の探索は {@code idx_entries_ts} を起点から時刻順に辿り、境界が見つかったところで
  * 打ち切る。専用の索引（file_id, thread, …）は足していない。
+ * 以下の実測はすべて {@link Mode#BOUNDARY} のもので、{@link Mode#WINDOW} は測っていない
+ * （窓の秒数とログの密度で読む行数が変わるため、同じ数字は当てはまらない）。
  * 実測（100 万行・1 ファイル・50 スレッド・108 MB、Windows 11 / JDK 8、各 5 回の中央値）:
  * <table summary="セッション追跡の実測">
  *   <tr><th>起点</th><th>--fts あり</th><th>--fts なし</th></tr>
@@ -69,6 +77,10 @@ public final class SessionTrace {
     public static final int DEFAULT_MAX_MINUTES = 10;
     /** 最大所要時間の上限（分）。 */
     public static final int MAX_MAX_MINUTES = 24 * 60;
+    /** {@link Mode#WINDOW} の前後秒数の既定値。 */
+    public static final int DEFAULT_WINDOW_SECONDS = 10;
+    /** {@link Mode#WINDOW} の前後秒数の上限。 */
+    public static final int MAX_WINDOW_SECONDS = 3600;
     /** 返すリクエスト数の上限。超えた分は数えるだけで範囲を求めない。 */
     static final int MAX_REQUESTS = 200;
     /**
@@ -99,10 +111,21 @@ public final class SessionTrace {
     /** trigram は 3 文字以上でないと部分一致検索できない。 */
     private static final int FTS_MIN_LEN = 3;
 
+    /** 同じリクエストとみなす範囲の決め方。 */
+    public enum Mode {
+        /** はじまり・おわりの語で区切る。 */
+        BOUNDARY,
+        /** セッション ID のある行の前後一定時間を同じリクエストとみなす。 */
+        WINDOW
+    }
+
     private final String sessionId;
+    private final Mode mode;
     private final Pattern startRe;
     private final Pattern endRe;
     private final long maxDurationMillis;
+    /** {@link Mode#WINDOW} で前後に見る時間（ミリ秒）。 */
+    private final long windowMillis;
     /** これに一致する行を含むリクエストだけを残す（null なら絞り込まない）。 */
     private Pattern containsRe;
     /** これに一致する行を含むリクエストを除く（null なら除かない）。 */
@@ -126,9 +149,44 @@ public final class SessionTrace {
                     "最大所要時間は 1〜" + MAX_MAX_MINUTES + " 分で指定してください");
         }
         this.sessionId = sessionId;
+        this.mode = Mode.BOUNDARY;
         this.startRe = startRe;
         this.endRe = endRe;
         this.maxDurationMillis = maxMinutes * 60_000L;
+        this.windowMillis = 0;
+    }
+
+    private SessionTrace(String sessionId, long windowSeconds) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            throw new IllegalArgumentException("セッション ID を指定してください");
+        }
+        if (windowSeconds < 1 || windowSeconds > MAX_WINDOW_SECONDS) {
+            throw new IllegalArgumentException(
+                    "前後の秒数は 1〜" + MAX_WINDOW_SECONDS + " 秒で指定してください");
+        }
+        this.sessionId = sessionId;
+        this.mode = Mode.WINDOW;
+        this.startRe = null;
+        this.endRe = null;
+        this.maxDurationMillis = 0;
+        this.windowMillis = windowSeconds * 1000L;
+    }
+
+    /**
+     * はじまり・おわりの語を使わず、<strong>セッション ID のある行の前後
+     * {@code windowSeconds} 秒</strong>にある同じファイル・同じスレッドの行を、
+     * ひとまとまりのリクエストとみなす。
+     *
+     * <p>語を決めなくても使える代わりに、正しさは落ちる。スレッドはプールで使い回されるので、
+     * 時間だけで区切ると直前・直後に同じスレッドが処理した<strong>別のリクエスト</strong>の行まで
+     * 取り込むことがある（逆に、秒数が短ければ同じリクエストの行を取りこぼす）。
+     * はじまり・おわりの語が分かっているなら {@link Mode#BOUNDARY} の方が正確。
+     *
+     * <p>同じスレッドで、前の起点から {@code windowSeconds} 秒以内に次の起点が出たときは、
+     * 範囲を継ぎ足して 1 つのリクエストにまとめる（行が二重に出ないようにするため）。
+     */
+    public static SessionTrace byTimeWindow(String sessionId, long windowSeconds) {
+        return new SessionTrace(sessionId, windowSeconds);
     }
 
     /**
@@ -155,7 +213,9 @@ public final class SessionTrace {
         /** 最大所要時間・ファイル末尾・件数上限のいずれかまでに閉じなかった。 */
         NOT_FOUND,
         /** どのリクエストにも属さない単独の行。 */
-        STANDALONE
+        STANDALONE,
+        /** {@link Mode#WINDOW} で、前後の時間だけで区切った。 */
+        WINDOW
     }
 
     /** 1 リクエスト分の結果。 */
@@ -169,6 +229,20 @@ public final class SessionTrace {
         public boolean truncated;
         /** おわり側を件数上限で打ち切ったか。後ろの行はまだ同じリクエストに属しうる。 */
         boolean cutAtTail;
+        /** {@link Mode#WINDOW}: このリクエストに寄せた最後の起点の時刻。継ぎ足しの判定に使う。 */
+        long lastAnchorTs;
+        /** {@link Mode#WINDOW}: 取り込み済みの時間範囲の右端。 */
+        long rangeEndTs;
+        /** 絞り込みを通っているか（継ぎ足しで変わりうる）。 */
+        boolean kept;
+        /** 直前の継ぎ足しで行が増えたか。増えたときだけ絞り込みを判定し直す。 */
+        boolean rowsAppended;
+        /** 絞り込みの判定を済ませた行数。ここから先だけを読み直す。 */
+        int filterCheckedRows;
+        /** 「含む」に一致した行があったか。 */
+        boolean containsHit;
+        /** 「除く」に一致した行があったか（当たったら以後は覆らない）。 */
+        boolean excludeHit;
         /** 時系列（ファイル内の行順）に並んだエントリ。 */
         public final List<EntryRow> entries = new ArrayList<>();
         /** 起点になった（識別子を含む）エントリの id。行ごとに引くので Set で持つ。 */
@@ -219,6 +293,23 @@ public final class SessionTrace {
                 result.anchorTotal++;
                 String key = anchor.fileId + "\0" + anchor.thread;
                 List<Request> sameContext = byContext.get(key);
+                // 起点は時刻順に来るので、同じスレッドで直前に求めたリクエストは末尾にある
+                Request last = sameContext == null ? null
+                        : sameContext.get(sameContext.size() - 1);
+                // 時間窓モード: 直前のリクエストが取り込み済みの行か、最後の起点から窓の時間内なら
+                // 同じリクエストとして扱い、この起点のぶんだけ窓を右へ伸ばす。
+                // （ID が続けて出るあいだは 1 つのリクエストにまとめる）
+                if (mode == Mode.WINDOW && last != null
+                        && (anchor.lineNo <= last.lastLine()
+                            || anchor.tsMillis - last.lastAnchorTs <= windowMillis)) {
+                    last.anchorIds.add(anchor.id);
+                    if (anchor.tsMillis > last.lastAnchorTs) {
+                        last.lastAnchorTs = anchor.tsMillis;
+                    }
+                    appendWindowRows(conn, last, anchor, anchor.tsMillis + windowMillis);
+                    reconcileFilter(result, last, handles);
+                    continue;
+                }
                 Request existing = findContaining(sameContext, anchor.lineNo);
                 if (existing != null) {
                     existing.anchorIds.add(anchor.id);
@@ -228,11 +319,12 @@ public final class SessionTrace {
                     result.truncated = true;
                     continue;
                 }
-                // 起点は時刻順に来るので、同じスレッドで直前に求めたリクエストは末尾にある
-                Request previous = sameContext == null ? null : sameContext.get(sameContext.size() - 1);
+                Request previous = last;
                 Request req = expand(conn, anchor, previous);
                 if (req == previous) {
-                    previous.anchorIds.add(anchor.id); // 上限で切った後ろにあった起点
+                    // 上限で切った後ろにあった起点、または時間窓を継ぎ足した起点
+                    previous.anchorIds.add(anchor.id);
+                    reconcileFilter(result, previous, handles);
                     continue;
                 }
                 examined++;
@@ -240,7 +332,8 @@ public final class SessionTrace {
                 // 落としたリクエストも byContext には残す。同じリクエストの別の起点で
                 // 範囲を求め直さないため（落とした分がまた出てくることもない）。
                 byContext.computeIfAbsent(key, k -> new ArrayList<>()).add(req);
-                if (keepRequest(req, handles)) {
+                req.kept = keepRequest(req, handles);
+                if (req.kept) {
                     result.requests.add(req);
                 } else {
                     // 落としたリクエストは結果に載せない（byContext には残してあるので、
@@ -282,20 +375,61 @@ public final class SessionTrace {
         if (containsRe == null && excludesRe == null) {
             return true;
         }
-        boolean contained = containsRe == null;
-        for (EntryRow e : req.entries) {
-            String raw = LogIndex.readEntryRawCached(handles, e);
+        if (req.excludeHit) {
+            return false; // 一度でも除外に当たったら、行が増えても覆らない
+        }
+        if (excludesRe == null && req.containsHit) {
+            return true; // 除外を見る必要が無く、既に含む条件を満たしている
+        }
+        // 前に見たところから先だけを読む。時間窓モードでは継ぎ足しのたびにここへ来るので、
+        // 毎回すべての行を読み直すと、1 リクエストが育つほど読み出しが増えてしまう。
+        for (int i = req.filterCheckedRows; i < req.entries.size(); i++) {
+            String raw = LogIndex.readEntryRawCached(handles, req.entries.get(i));
             if (excludesRe != null && excludesRe.matcher(raw).find()) {
+                req.excludeHit = true;
+                req.filterCheckedRows = i + 1;
                 return false;
             }
-            if (!contained && containsRe.matcher(raw).find()) {
+            if (!req.containsHit && containsRe != null && containsRe.matcher(raw).find()) {
+                req.containsHit = true;
                 if (excludesRe == null) {
+                    req.filterCheckedRows = i + 1;
                     return true;
                 }
-                contained = true;
             }
         }
-        return contained;
+        req.filterCheckedRows = req.entries.size();
+        return containsRe == null || req.containsHit;
+    }
+
+    /**
+     * 時間窓の継ぎ足しで行が増えたリクエストについて、絞り込みの判定をやり直す。
+     * 増えた行に「含む」の語が出れば拾い直し、「除く」の語が出れば落とす。
+     */
+    private void reconcileFilter(Result result, Request req,
+            Map<String, RandomAccessFile> handles) {
+        if (!req.rowsAppended || (containsRe == null && excludesRe == null)) {
+            req.rowsAppended = false;
+            return;
+        }
+        req.rowsAppended = false;
+        boolean keep = keepRequest(req, handles);
+        if (keep == req.kept) {
+            return;
+        }
+        req.kept = keep;
+        if (keep) {
+            if (result.requests.size() >= MAX_REQUESTS) {
+                req.kept = false;
+                result.truncated = true;
+                return;
+            }
+            result.requests.add(req);
+            result.filteredOut--;
+        } else {
+            result.requests.remove(req);
+            result.filteredOut++;
+        }
     }
 
     private static Request findContaining(List<Request> requests, long lineNo) {
@@ -346,6 +480,104 @@ public final class SessionTrace {
         return endRe.matcher(e.message).find();
     }
 
+    /**
+     * 前後の時間だけで範囲を決める（{@link Mode#WINDOW}）。
+     *
+     * <p>最後の起点から窓の時間内に次の起点が来たときは、新しく作らず右へ継ぎ足す
+     * （その判定は {@link #run} が行う）。窓どうしが重なっても同じ行を 2 度出さないよう、
+     * 取り込み済みの最後の行より後ろだけを足す。
+     */
+    private Request expandByWindow(Connection conn, EntryRow anchor, Request previous,
+            Request req) throws SQLException {
+        req.endReason = EndReason.WINDOW;
+        req.startFound = false;
+        req.lastAnchorTs = anchor.tsMillis;
+        // 直前のリクエストと行が重ならないようにする（窓が重なっても二重に出さない）
+        long floorLine = previous != null && previous.source.equals(anchor.source)
+                && previous.thread.equals(anchor.thread) ? previous.lastLine() : Long.MIN_VALUE;
+
+        // 起点より前を先に集める。窓の左端から順に入れると、前が混んでいるときに件数上限へ
+        // 達して起点そのものが落ちるため、前側は上限の半分までにして残りを起点側へ空けておく
+        // （はじまり・おわりで区切るときと同じ考え方）。
+        List<EntryRow> before = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(BACKWARD_SQL)) {
+            ps.setLong(1, anchor.fileId);
+            ps.setString(2, anchor.thread);
+            ps.setLong(3, anchor.tsMillis - windowMillis);
+            ps.setLong(4, anchor.tsMillis);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    EntryRow e = rowInSameFile(rs, anchor);
+                    if (e.lineNo >= anchor.lineNo) {
+                        continue; // 起点と、それ以降は後ろ側で入れる
+                    }
+                    if (e.lineNo <= floorLine) {
+                        break; // 直前のリクエストに入っている行
+                    }
+                    if (before.size() >= MAX_ROWS_PER_REQUEST / 2) {
+                        req.truncated = true;
+                        break;
+                    }
+                    before.add(e);
+                }
+            }
+        }
+        Collections.reverse(before);
+        req.entries.addAll(before);
+
+        // 起点から後ろ（起点を含む）
+        fetchWindowRows(conn, req, anchor, anchor.tsMillis, anchor.tsMillis + windowMillis,
+                Math.max(floorLine, anchor.lineNo - 1));
+        if (req.entries.isEmpty()) {
+            req.entries.add(anchor); // 取れないことは無いはずだが、起点だけは必ず残す
+        }
+        return req;
+    }
+
+    /** 継ぎ足し。取り込み済みの右端より後ろだけを足す。 */
+    private void appendWindowRows(Connection conn, Request req, EntryRow anchor, long untilTs)
+            throws SQLException {
+        int before = req.entries.size();
+        fetchWindowRows(conn, req, anchor, req.rangeEndTs + 1, untilTs, req.lastLine());
+        if (req.entries.size() > before) {
+            req.rowsAppended = true;
+        }
+    }
+
+    /**
+     * 同じファイル・同じスレッドの行を、時刻の範囲で取り込む。
+     * {@code floorLine} 以下の行は既に別のリクエストへ入っているので飛ばす。
+     */
+    private void fetchWindowRows(Connection conn, Request req, EntryRow anchor, long fromTs,
+            long untilTs, long floorLine) throws SQLException {
+        if (untilTs < fromTs) {
+            return;
+        }
+        try (PreparedStatement ps = conn.prepareStatement(FORWARD_SQL)) {
+            ps.setLong(1, anchor.fileId);
+            ps.setString(2, anchor.thread);
+            ps.setLong(3, fromTs);
+            ps.setLong(4, untilTs);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    EntryRow e = rowInSameFile(rs, anchor);
+                    if (e.lineNo <= floorLine) {
+                        continue;
+                    }
+                    if (req.entries.size() >= MAX_ROWS_PER_REQUEST) {
+                        req.truncated = true;
+                        req.cutAtTail = true;
+                        break;
+                    }
+                    req.entries.add(e);
+                }
+            }
+        }
+        if (untilTs > req.rangeEndTs) {
+            req.rangeEndTs = untilTs;
+        }
+    }
+
     /** {@link LogIndex#selectEntriesOnly} の行を読む。ファイルは起点と同じなのでパスを引き継ぐ。 */
     private static EntryRow rowInSameFile(ResultSet rs, EntryRow anchor) throws SQLException {
         EntryRow e = LogIndex.rowFrom(rs);
@@ -369,6 +601,9 @@ public final class SessionTrace {
             req.entries.add(anchor);
             req.endReason = EndReason.STANDALONE;
             return req;
+        }
+        if (mode == Mode.WINDOW) {
+            return expandByWindow(conn, anchor, previous, req);
         }
 
         // ---- はじまり側: 起点から遡る（起点自身は含めない）
