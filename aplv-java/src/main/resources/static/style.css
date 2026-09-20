@@ -409,9 +409,18 @@ button {
 }
 
 /* 判定方法のセレクト。input と同じ見た目に揃える */
-.session-trace-fields > label.session-trace-mode {
+.session-trace-fields > .session-trace-mode {
   flex: 0 0 18rem;
   min-width: 14rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.session-trace-mode .field-label-row > label {
+  display: inline;
 }
 
 .session-trace-mode select {
@@ -501,6 +510,7 @@ button.field-hint-trigger:focus-visible {
   /* 右端の項目でも画面外へ出さない。？の右端にポップアップの右端を揃える */
   left: auto;
   right: 0;
+  /* 左端の項目では逆に左へはみ出すので、その場合だけ左揃えにする（--start） */
   transform: none;
   width: max-content;
   max-width: min(16.25rem, calc(100vw - 1.5rem));
@@ -516,6 +526,11 @@ button.field-hint-trigger:focus-visible {
   pointer-events: none;
   white-space: normal;
   word-break: break-word;
+}
+
+.field-hint-popup--start {
+  left: 0;
+  right: auto;
 }
 
 .field-hint:hover .field-hint-popup,
