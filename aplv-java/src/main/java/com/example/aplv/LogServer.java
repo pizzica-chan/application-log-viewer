@@ -876,6 +876,7 @@ public final class LogServer {
                 }
                 payload.add("items", items);
                 payload.addProperty("skipped", loaded.skipped);
+                payload.addProperty("overflow", loaded.overflow);
                 // 画面に実際の保存先を出すため、解決済みの絶対パスを返す
                 payload.addProperty("file", PathUtil.normalizePath(savedSearches.file()));
                 sendJson(ex, 200, payload);

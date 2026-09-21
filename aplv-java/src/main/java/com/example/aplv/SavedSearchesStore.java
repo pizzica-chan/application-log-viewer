@@ -11,7 +11,6 @@ import com.google.gson.JsonSyntaxException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -36,7 +35,8 @@ import java.util.UUID;
  * {@link java.util.regex.Pattern} へのコンパイルや置換・パス解決には使わない。
  * 読み込み時に正規表現エンジンを動かさないことで、手編集された破滅的なパターンで
  * 起動や一覧取得が止まらないようにする。実際のマッチは検索・追跡の実行時だけ行う。
- * 項目が 1 件だけ壊れていても、読める件はそのまま返す。200 件を超えた余りも読み飛ばす。
+ * 項目が 1 件だけ壊れていても、読める件はそのまま返す。200 件を超えた余りも読み飛ばすが、
+ * そのファイルへの保存・削除は断る（書き戻すと読み飛ばした件が消えるため）。
  * ファイル全体の JSON が壊れているときは失敗する。
  *
  * <p>JSON を使う理由は、{@code \} や {@code "} を含む正規表現をエスケープして往復できるため。
@@ -122,7 +122,7 @@ public final class SavedSearchesStore {
             LoadResult loaded = readAll();
             return new LoadResult(
                     Collections.unmodifiableList(new ArrayList<SavedSearch>(loaded.items)),
-                    loaded.skipped);
+                    loaded.skipped, loaded.overflow);
         }
     }
 
@@ -136,7 +136,9 @@ public final class SavedSearchesStore {
         String normalizedMode = normalizeMode(mode);
         Map<String, String> sanitized = sanitizeFields(normalizedMode, fields);
         synchronized (lock) {
-            List<SavedSearch> items = new ArrayList<SavedSearch>(readAll().items);
+            LoadResult loaded = readAll();
+            requireWritable(loaded);
+            List<SavedSearch> items = new ArrayList<SavedSearch>(loaded.items);
             SavedSearch existing = findByNameAndMode(items, trimmedName, normalizedMode);
             SavedSearch saved;
             if (existing != null) {
@@ -167,7 +169,9 @@ public final class SavedSearchesStore {
             throw new IllegalArgumentException("id の形式が不正です");
         }
         synchronized (lock) {
-            List<SavedSearch> items = readAll().items;
+            LoadResult loaded = readAll();
+            requireWritable(loaded);
+            List<SavedSearch> items = loaded.items;
             boolean removed = false;
             List<SavedSearch> next = new ArrayList<SavedSearch>(items.size());
             for (SavedSearch item : items) {
@@ -181,6 +185,20 @@ public final class SavedSearchesStore {
                 writeAll(next);
             }
             return removed;
+        }
+    }
+
+    /**
+     * 上限を超えて読み飛ばした項目があるファイルへは書き戻さない。
+     * 書き戻すと、読めていない 201 件目以降が黙って消えてしまうため。
+     * 読み出し（一覧）は今までどおりできる。
+     */
+    private void requireWritable(LoadResult loaded) {
+        if (loaded.overflow) {
+            throw new IllegalArgumentException("保存ファイルの件数が上限（" + MAX_ITEMS
+                    + "）を超えています。このまま保存すると読み込めていない条件が消えるため、"
+                    + "保存と削除はできません。" + file + " を直接編集して " + MAX_ITEMS
+                    + " 件以下にしてください");
         }
     }
 
@@ -262,7 +280,7 @@ public final class SavedSearchesStore {
         if (overflow) {
             System.err.println("保存ファイルの件数が上限（" + MAX_ITEMS + "）を超えたため、余りをスキップしました");
         }
-        return new LoadResult(items, skipped);
+        return new LoadResult(items, skipped, overflow);
     }
 
     private SavedSearch parseItem(JsonObject obj) throws IOException {
@@ -313,16 +331,17 @@ public final class SavedSearchesStore {
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
             return;
-        } catch (AtomicMoveNotSupportedException e) {
-            // 置き換えられない環境では、ふつうの移動を試す
+        } catch (IOException e) {
+            // 置き換えができない環境。原因は AtomicMoveNotSupportedException とは限らず、
+            // Docker で保存ファイルだけを bind mount していると rename(2) が EBUSY、
+            // Windows で対象が開かれていればアクセス拒否になる。いずれもここで拾う。
         }
         try {
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
             return;
         } catch (IOException e) {
-            // Docker で保存ファイルだけを bind mount していると、置き換え先がマウント
-            // ポイントになり rename(2) が EBUSY で失敗する。その場合は元のファイルへ
-            // 直接書く（途中で落ちると壊れうるが、ここまで来たら他に手が無い）。
+            // ふつうの移動も置き換えなので同じ理由で失敗する。最後は元のファイルへ直接書く
+            // （途中で落ちると壊れうるが、ここまで来たら他に手が無い）。
             writeInPlace(bytes, tmp, e);
         }
     }
@@ -504,14 +523,18 @@ public final class SavedSearchesStore {
 
     /** 読み出した一覧と、壊れている・上限超過で飛ばした件数。 */
     public static final class LoadResult {
-        static final LoadResult EMPTY = new LoadResult(Collections.<SavedSearch>emptyList(), 0);
+        static final LoadResult EMPTY =
+                new LoadResult(Collections.<SavedSearch>emptyList(), 0, false);
 
         public final List<SavedSearch> items;
         public final int skipped;
+        /** 件数の上限を超えていて、読み込めていない項目があるか。 */
+        public final boolean overflow;
 
-        LoadResult(List<SavedSearch> items, int skipped) {
+        LoadResult(List<SavedSearch> items, int skipped, boolean overflow) {
             this.items = items;
             this.skipped = skipped;
+            this.overflow = overflow;
         }
     }
 

@@ -442,7 +442,8 @@ paths:
         ツールホーム直下（`APLV_HOME`。未設定時はリポジトリ直下）の `aplv-saved-searches.json` を読む。
         条件に含まれる正規表現は文字列のまま返し、この API ではコンパイルもマッチも行わない。
         ファイルが無いときは空の `items` を返す。壊れた項目や 200 件を超えた余りは読み飛ばし、
-        `skipped` に件数を入れる。
+        `skipped` に件数を入れる。件数が上限を超えていたときは `overflow` を `true` にし、
+        そのファイルへの保存・削除は 400 で断る（書き戻すと読み飛ばした条件が消えるため）。
       operationId: listSavedSearches
       responses:
         '200':
@@ -502,7 +503,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SavedSearch'
         '400':
-          description: 名前未指定、mode 不正、件数上限、JSON 不正、本文が大きすぎる
+          description: 名前未指定、mode 不正、件数上限、保存ファイルが上限超過、JSON 不正、本文が大きすぎる
           content:
             application/json:
               schema:
@@ -544,7 +545,7 @@ paths:
                     type: boolean
                     enum: [true]
         '400':
-          description: id 未指定または形式不正
+          description: id 未指定または形式不正、保存ファイルが上限超過
           content:
             application/json:
               schema:
@@ -916,7 +917,7 @@ components:
 
     SavedSearchListResponse:
       type: object
-      required: [items, skipped]
+      required: [items, skipped, overflow]
       properties:
         items:
           type: array
@@ -926,6 +927,11 @@ components:
           type: integer
           minimum: 0
           description: 壊れている、または 200 件を超えたために読み飛ばした件数
+        overflow:
+          type: boolean
+          description: |
+            件数が 200 件の上限を超えていたか。`true` のときは保存・削除が 400 で断られる
+            （書き戻すと読み込めていない条件が消えるため）。
         file:
           type: string
           description: 実際に読み書きしている保存ファイルの絶対パス（画面の表示用）

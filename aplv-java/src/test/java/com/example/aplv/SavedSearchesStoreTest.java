@@ -203,6 +203,31 @@ class SavedSearchesStoreTest {
     /** 201 件あるファイルは先頭 200 件だけ返し、余りはスキップすること。 */
     @Test
     void skipsItemsOverMax() throws IOException {
+        writeItemsOverMax();
+        SavedSearchesStore.LoadResult loaded = store().load();
+        assertEquals(SavedSearchesStore.MAX_ITEMS, loaded.items.size());
+        assertEquals(1, loaded.skipped);
+    }
+
+    /**
+     * 上限を超えたファイルには書き戻さないこと。書き戻すと、読み込めていない
+     * 201 件目以降が黙って消えてしまう。一覧の読み出しだけは今までどおりできる。
+     */
+    @Test
+    void refusesToWriteBackWhenOverMax() throws IOException {
+        Path file = writeItemsOverMax();
+        byte[] before = Files.readAllBytes(file);
+        SavedSearchesStore s = store();
+        assertThrows(IllegalArgumentException.class,
+                () -> s.upsert("n0", "search", Collections.<String, String>emptyMap()));
+        assertThrows(IllegalArgumentException.class,
+                () -> s.delete("aaaaaaaa-bbbb-cccc-dddd-000000000000"));
+        assertArrayEquals(before, Files.readAllBytes(file));
+        assertEquals(SavedSearchesStore.MAX_ITEMS, s.list().size());
+    }
+
+    /** 上限を 1 件超える保存ファイルを作る。 */
+    private Path writeItemsOverMax() throws IOException {
         Path file = tmp.resolve(SavedSearchesStore.FILE_NAME);
         StringBuilder json = new StringBuilder();
         json.append("{\"version\":1,\"items\":[");
@@ -217,9 +242,7 @@ class SavedSearchesStoreTest {
         }
         json.append("]}");
         Files.write(file, json.toString().getBytes(StandardCharsets.UTF_8));
-        SavedSearchesStore.LoadResult loaded = store().load();
-        assertEquals(SavedSearchesStore.MAX_ITEMS, loaded.items.size());
-        assertEquals(1, loaded.skipped);
+        return file;
     }
 
     /** 空の名前や制御文字を含む名前は保存できないこと。 */

@@ -678,7 +678,7 @@ function applySourceDisplay() {
  * 検索条件の保存・呼び出し（サーバ側。ツールホーム直下の JSON）。
  * ハイライトやフルパス表示など表示設定は対象外。いま選んでいるタブの input/select を
  * id -> value のマップとして保存し、適用時は同じ id の要素へ書き戻す。
- * どちらのタブで保存したかを mode に持ち、適用時はそのタブへ切り替えて実行する
+ * どちらのタブで保存したかを mode に持ち、適用時はそのタブへ切り替えて欄を埋める
  * （mode を持たない古い保存データは検索タブのものとして扱う）。
  *
  * 条件値は正規表現を含みうるが、ここでは文字列として読み書きするだけ。
@@ -693,6 +693,7 @@ async function loadSavedSearches() {
   return {
     items: Array.isArray(data.items) ? data.items : [],
     skipped: typeof data.skipped === "number" ? data.skipped : 0,
+    overflow: data.overflow === true,
     file: typeof data.file === "string" ? data.file : "",
   };
 }
@@ -714,6 +715,18 @@ function collectFilterFields() {
     fields[el.id] = el.value;
   }
   return fields;
+}
+
+/**
+ * 読み飛ばした項目の案内。上限超過のときは保存・削除ごと断られるので、
+ * 「次の保存で消える」ではなくファイルを減らすよう促す。
+ */
+function skippedMessage(loaded) {
+  if (loaded.overflow) {
+    return `保存ファイルの件数が上限を超えています。読み込めていない項目が ${loaded.skipped} 件あり、`
+      + "消えないよう保存と削除を止めています。ファイルを直接編集して減らしてください。";
+  }
+  return `読めなかった項目が ${loaded.skipped} 件あります（次の保存でファイルから消えます）。`;
 }
 
 /** 入力欄の既定値（HTML に書いた値）。保存に無い項目はここへ戻す。 */
@@ -784,7 +797,7 @@ async function renderSavedSearchList() {
     els.savedSearchSkipped.hidden = loaded.skipped <= 0;
     els.savedSearchSkipped.textContent =
       loaded.skipped > 0
-        ? `読めなかった項目が ${loaded.skipped} 件あります（次の保存でファイルから消えます）。`
+        ? skippedMessage(loaded)
         : "";
   }
   for (const saved of list) {
