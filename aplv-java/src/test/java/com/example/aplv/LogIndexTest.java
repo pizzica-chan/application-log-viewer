@@ -1,5 +1,6 @@
 package com.example.aplv;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -593,6 +594,65 @@ class LogIndexTest {
             assertEquals(0, LogIndex.entryCount(conn), "取り込んだ行を残さないこと");
             assertTrue(LogIndex.needsRebuild(conn, paths, false, LogFormat.DEFAULT),
                     "fingerprint を消して次回に再構築させること");
+        }
+    }
+
+    /**
+     * 前方向にまとめ読みするリーダが、都度読みと同じ内容を返すこと。
+     * 戻る要求、窓（64 KiB）に収まらない大きさ、ファイル末尾を確かめる。
+     */
+    @Test
+    void sequentialRawReaderMatchesDirectReads(@TempDir Path tmp) throws Exception {
+        byte[] data = new byte[200_000];
+        for (int i = 0; i < data.length; i++) {
+            data[i] = (byte) (i % 251);
+        }
+        Path file = tmp.resolve("raw.bin");
+        Files.write(file, data);
+
+        try (LogIndex.SequentialRawReader reader =
+                new LogIndex.SequentialRawReader(file.toString())) {
+            byte[] buf = new byte[300_000];
+            // 前方向に少しずつ
+            for (long offset = 0; offset < 150_000; offset += 1000) {
+                int n = reader.read(offset, 500, buf);
+                assertEquals(500, n);
+                assertArrayEquals(Arrays.copyOfRange(data, (int) offset, (int) offset + 500),
+                        Arrays.copyOf(buf, n));
+            }
+            // 戻る（窓の外）
+            int n = reader.read(10, 100, buf);
+            assertEquals(100, n);
+            assertArrayEquals(Arrays.copyOfRange(data, 10, 110), Arrays.copyOf(buf, n));
+            // 窓に収まらない大きさ
+            n = reader.read(1000, 150_000, buf);
+            assertEquals(150_000, n);
+            assertArrayEquals(Arrays.copyOfRange(data, 1000, 151_000), Arrays.copyOf(buf, n));
+            // ファイル末尾は読めたぶんだけ返す
+            n = reader.read(data.length - 10, 100, buf);
+            assertEquals(10, n);
+            assertArrayEquals(Arrays.copyOfRange(data, data.length - 10, data.length),
+                    Arrays.copyOf(buf, n));
+        }
+    }
+
+    /** バイト列の部分一致が、デコードしてからの String#contains と一致すること。 */
+    @Test
+    void containsBytesMatchesStringContains() {
+        String[] haystacks = {
+            "sessionId=8F3A2C91D4E6B7A0.node1 items=3",
+            "セッションID=あいうえお かきくけこ",
+            "no match here",
+            "末尾に置く 8F3A",
+        };
+        String[] needles = {"8F3A2C91D4E6B7A0.node1", "あいうえお", "いう", "8F3A", "zzz"};
+        for (String h : haystacks) {
+            byte[] hay = h.getBytes(StandardCharsets.UTF_8);
+            for (String n : needles) {
+                byte[] needle = n.getBytes(StandardCharsets.UTF_8);
+                assertEquals(h.contains(n), LogIndex.containsBytes(hay, hay.length, needle),
+                        h + " / " + n);
+            }
         }
     }
 }

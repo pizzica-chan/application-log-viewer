@@ -1,6 +1,8 @@
 package com.example.aplv;
 
+import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -57,17 +59,20 @@ import com.example.aplv.LogIndex.EntryRow;
  * 実測（100 万行・1 ファイル・50 スレッド・108 MB、Windows 11 / JDK 8、各 5 回の中央値）:
  * <table summary="セッション追跡の実測">
  *   <tr><th>起点</th><th>--fts あり</th><th>--fts なし</th></tr>
- *   <tr><td>26 件（26 リクエスト）</td><td>11ms</td><td>5,221ms</td></tr>
- *   <tr><td>299 件（範囲を求めるのは上限の 200 リクエスト）</td><td>52ms</td><td>5,270ms</td></tr>
+ *   <tr><td>26 件（26 リクエスト）</td><td>11ms</td><td>577ms</td></tr>
+ *   <tr><td>299 件（範囲を求めるのは上限の 200 リクエスト）</td><td>58ms</td><td>587ms</td></tr>
  * </table>
+ * --fts なしの値は、起点探しをまとめ読み + バイト列照合 + 文字列列の遅延取り出しに変える前は
+ * 5,221ms / 5,270ms だった（{@link LogIndex.SequentialRawReader}）。--fts ありは 11ms / 52ms で、
+ * 変更後の 11ms / 58ms との差は測定のばらつきの範囲。
  * リクエスト単位の絞り込み（{@link #withRequestFilter}）の追加後に、299 件の条件で測り直した
  * （同じ条件・5 回の中央値）: 絞り込みなし 51ms、含む・全件一致 53ms、除く・299 件すべてを
  * 落とす 70ms。絞り込みなしが上表の 52ms と 1ms 違うのは測定のばらつきの範囲で、差は無いとみる。
  * 絞り込みは結論が出た時点で読むのをやめるので、上の値にほとんど上乗せされない。
- * --fts なしでは起点の数によらずほぼ一定で、起点探しの全件走査（一覧の全文検索と同じ処理）が
- * 大半を占める。ありふれた文字列（{@code sessionId=}、起点 133,347 件）を指定しても、
- * 起点を溜めずに流すので --fts ありで 1,008ms、ヒープ 256MB で完走した（除外を付けて
- * {@link #MAX_EXAMINED_REQUESTS} に当たる場合で 1,360ms）。
+ * --fts なしでは起点の数によらずほぼ一定で、起点探し（全件のバイト範囲を読む）が大半を占める。
+ * ありふれた文字列（{@code sessionId=}、起点 133,347 件）を指定しても、起点を溜めずに流すので
+ * --fts ありで 630ms、--fts なしで 860ms、ヒープ 256MB で完走した（高速化前は --fts ありで
+ * 1,008ms、除外を付けて {@link #MAX_EXAMINED_REQUESTS} に当たる場合で 1,360ms）。
  * 範囲探索のクエリで files と JOIN していたときは、並べ替えのために時間窓の全行を集めていたため、
  * 上の 2 行が --fts ありでも 1,326ms / 11,743ms かかっていた（{@link LogIndex#selectEntriesOnly}）。
  */
@@ -130,6 +135,9 @@ public final class SessionTrace {
     private Pattern containsRe;
     /** これに一致する行を含むリクエストを除く（null なら除かない）。 */
     private Pattern excludesRe;
+    /** 起点探しで使う識別子のバイト列と読み出しバッファ（使い回す）。 */
+    private byte[] needle;
+    private byte[] buffer = new byte[8192];
 
     /**
      * @param sessionId 識別子。正規表現ではなく文字列としてそのまま照合する（大文字小文字を区別）
@@ -280,16 +288,20 @@ public final class SessionTrace {
         // 起点が複数あるとき、範囲を求め直さずに既存のリクエストへ寄せるために使う。
         Map<String, List<Request>> byContext = new HashMap<>();
         Map<String, RandomAccessFile> handles = new HashMap<>();
+        // 起点探し用。エントリごとに seek するのではなく、ファイルを前方向にまとめ読みする
+        Map<String, LogIndex.SequentialRawReader> readers = new HashMap<>();
+        Map<Long, String> paths = new HashMap<>();
         int examined = 0;
         // 起点は溜めずに 1 件ずつ処理する。ありふれた文字列を指定すると全行が起点になりうるため。
         // 起点のカーソルを開いたまま範囲探索のクエリを流す（SQLite は同じ接続で併用できる）。
         try (PreparedStatement ps = prepareAnchorQuery(conn);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                EntryRow anchor = LogIndex.rowFrom(rs);
-                if (!LogIndex.readEntryRawCached(handles, anchor).contains(sessionId)) {
+                if (!anchorMatches(rs, readers, paths)) {
                     continue;
                 }
+                // 一致した行だけ、文字列の列（logger / thread / message / パス）を取り出す
+                EntryRow anchor = LogIndex.rowFrom(rs);
                 result.anchorTotal++;
                 String key = anchor.fileId + "\0" + anchor.thread;
                 List<Request> sameContext = byContext.get(key);
@@ -341,8 +353,11 @@ public final class SessionTrace {
                     result.filteredOut++;
                 }
             }
+        } catch (IOException e) {
+            throw new SQLException("ログファイルを読み出せません: " + e.getMessage(), e);
         } finally {
             LogIndex.closeHandles(handles);
+            LogIndex.closeReaders(readers);
         }
         // 起点は時刻順に拾うが、はじまりまで遡るとリクエストの先頭の順序は入れ替わりうる。
         Collections.sort(result.requests, (a, b) -> {
@@ -453,6 +468,48 @@ public final class SessionTrace {
      * 識別子を正規表現として扱わないのは、jvmRoute 付きの JSESSIONID（{@code ABC.node1}）の
      * {@code .} などをメタ文字にしないため。
      */
+    /**
+     * いまの行が識別子を含むか。文字列の列は取り出さず、byte 範囲を読んでバイト列のまま照合する。
+     *
+     * <p>一致しない行が大半なので、ここで {@code logger} などの文字列を取り出すと、
+     * 使われない文字列の生成に時間を取られる（実測は {@link LogIndex.SequentialRawReader}）。
+     * ファイルのパスも、行ごとではなく file_id ごとに 1 回だけ取り出す。
+     */
+    private boolean anchorMatches(ResultSet rs, Map<String, LogIndex.SequentialRawReader> readers,
+            Map<Long, String> paths) throws SQLException, IOException {
+        long start = rs.getLong(4);
+        long end = rs.getLong(5);
+        long size = end > start ? end - start : 0;
+        if (size <= 0) {
+            return false;
+        }
+        long fileId = rs.getLong(2);
+        String path = paths.get(fileId);
+        if (path == null) {
+            path = rs.getString(11);
+            paths.put(fileId, path);
+        }
+        LogIndex.SequentialRawReader reader = readers.get(path);
+        if (reader == null) {
+            reader = new LogIndex.SequentialRawReader(path);
+            readers.put(path, reader);
+        }
+        int len = (int) Math.min(size, Integer.MAX_VALUE);
+        if (buffer.length < len) {
+            buffer = new byte[len];
+        }
+        int read = reader.read(start, len, buffer);
+        return LogIndex.containsBytes(buffer, read, needleBytes());
+    }
+
+    /** 識別子の UTF-8 バイト列（1 回だけ作る）。 */
+    private byte[] needleBytes() {
+        if (needle == null) {
+            needle = sessionId.getBytes(StandardCharsets.UTF_8);
+        }
+        return needle;
+    }
+
     private PreparedStatement prepareAnchorQuery(Connection conn) throws SQLException {
         StringBuilder sql = new StringBuilder(LogIndex.selectBase());
         boolean useFts = sessionId.length() >= FTS_MIN_LEN && LogIndex.ftsAvailable(conn);

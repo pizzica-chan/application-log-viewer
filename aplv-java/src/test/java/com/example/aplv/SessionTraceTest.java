@@ -645,6 +645,54 @@ class SessionTraceTest {
         }
     }
 
+    /**
+     * 起点の照合はバイト列で行うが、日本語など複数バイトの識別子でも
+     * 文字列として照合したときと同じ結果になること。
+     */
+    @Test
+    void findsAnchorWithMultibyteId(@TempDir Path tmp) throws Exception {
+        String id = "セッション−あいうえお";
+        String content = line("10:00:00.000", "exec-1", "リクエスト開始 GET /a")
+                + line("10:00:00.010", "exec-1", "id=" + id + " を処理します")
+                + line("10:00:00.020", "exec-1", "id=セッション−かきくけこ は別物")
+                + line("10:00:00.030", "exec-1", "リクエスト終了 status=200");
+        Path log = writeLog(tmp, "app.log", content);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.DEFAULT);
+            SessionTrace.Result r = new SessionTrace(id, QueryFilter.compileRegex(START),
+                    QueryFilter.compileRegex(END), 10).run(conn);
+            assertEquals(1, r.anchorTotal);
+            assertEquals(1, r.requests.size());
+            assertEquals(4, r.requests.get(0).entries.size());
+        }
+    }
+
+    /** 読み出しの窓（64 KiB）より大きいエントリでも、識別子を見つけられること。 */
+    @Test
+    void findsAnchorInEntryLargerThanReadWindow(@TempDir Path tmp) throws Exception {
+        StringBuilder stack = new StringBuilder();
+        for (int i = 0; i < 2000; i++) {
+            stack.append("\tat com.example.Deep").append(i).append(".run(Deep.java:").append(i)
+                    .append(")\n");
+        }
+        String content = line("10:00:00.000", "exec-1", "リクエスト開始 GET /a")
+                + line("10:00:00.010", "exec-1", "処理に失敗しました")
+                + "java.lang.RuntimeException: session=" + SID + "\n" + stack
+                + line("10:00:00.020", "exec-1", "リクエスト終了 status=500");
+        Path log = writeLog(tmp, "app.log", content);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.DEFAULT);
+            EntryRow big = LogIndex.findEntry(conn, PathUtil.normalizePath(log), 2);
+            assertTrue(big.endByteOffset - big.byteOffset > 65536,
+                    "窓より大きいエントリであること");
+            SessionTrace.Result r = trace(SID, 10).run(conn);
+            assertEquals(1, r.anchorTotal);
+            assertEquals(3, r.requests.get(0).entries.size());
+        }
+    }
+
     /** 時間窓モードの引数の検証。 */
     @Test
     void windowModeRejectsInvalidArguments() {

@@ -1,6 +1,7 @@
 package com.example.aplv;
 
 import java.io.BufferedInputStream;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
@@ -900,6 +901,122 @@ public final class LogIndex {
         } catch (IOException ex) {
             return "";
         }
+    }
+
+    /**
+     * 1 ファイルを前方向にまとめ読みするリーダ。
+     *
+     * <p>エントリごとに {@code seek} + {@code read} を呼ぶと、1 行あたりシステムコールが
+     * 2 回かかる。取り出す順序はおおむねファイルの先頭から末尾へ進むので、窓（既定 64 KiB）に
+     * まとめて読んでおき、そこから切り出す。戻る要求や窓に収まらない大きなエントリが来たら、
+     * その場で読み直すので、返る内容は都度読んだ場合と同じになる。
+     *
+     * <p>実測（100 万行・108 MB の全エントリを読んで照合、Windows 11 / JDK 8、3 回の中央値）:
+     * エントリごとの {@code seek} + {@code read} + UTF-8 デコードで 5,221ms、
+     * この読み方 + バイト列照合 + 文字列列の遅延取り出しで 642ms。
+     * 追跡全体での値は {@link SessionTrace} のコメントを参照。
+     */
+    static final class SequentialRawReader implements Closeable {
+        /** 窓の大きさ。ログ 1 行が数百バイトなので、64 KiB で数百行ぶんをまとめて読める。 */
+        private static final int WINDOW_BYTES = 1 << 16;
+
+        private final RandomAccessFile file;
+        private final byte[] window = new byte[WINDOW_BYTES];
+        /** 窓が指すファイル上の位置。{@code -1} は窓が無効。 */
+        private long windowStart = -1;
+        private int windowLen;
+
+        SequentialRawReader(String path) throws IOException {
+            this.file = new RandomAccessFile(path, "r");
+        }
+
+        /**
+         * {@code offset} から {@code len} バイトを {@code into} へ読み出し、実際に読めた
+         * バイト数を返す（ファイル末尾なら要求より少なくなる）。
+         */
+        int read(long offset, int len, byte[] into) throws IOException {
+            if (len <= 0) {
+                return 0;
+            }
+            if (len > window.length) {
+                // 窓に収まらないエントリ（長いスタックトレース等）は直接読む
+                file.seek(offset);
+                int n = readFully(into, len);
+                windowStart = -1;
+                return n;
+            }
+            if (windowStart < 0 || offset < windowStart
+                    || offset + len > windowStart + windowLen) {
+                file.seek(offset);
+                windowStart = offset;
+                windowLen = readFully(window, window.length);
+            }
+            int from = (int) (offset - windowStart);
+            int n = Math.min(len, windowLen - from);
+            if (n <= 0) {
+                return 0;
+            }
+            System.arraycopy(window, from, into, 0, n);
+            return n;
+        }
+
+        private int readFully(byte[] buf, int len) throws IOException {
+            int filled = 0;
+            while (filled < len) {
+                int n = file.read(buf, filled, len - filled);
+                if (n < 0) {
+                    break;
+                }
+                filled += n;
+            }
+            return filled;
+        }
+
+        @Override
+        public void close() throws IOException {
+            file.close();
+        }
+    }
+
+    /** {@link SequentialRawReader} をまとめて閉じる。 */
+    static void closeReaders(Map<String, SequentialRawReader> readers) {
+        if (readers == null) {
+            return;
+        }
+        for (SequentialRawReader r : readers.values()) {
+            try {
+                r.close();
+            } catch (IOException ignored) {
+                // クローズ失敗は無視
+            }
+        }
+    }
+
+    /**
+     * バイト列のまま部分一致を探す。
+     *
+     * <p>UTF-8 へデコードしてから {@link String#contains} するのと同じ結果になる。
+     * UTF-8 は先頭バイトと継続バイトの範囲が重ならないので、文字の途中から一致することが
+     * ないため（1 行あたりのデコードと文字列生成を省ける）。
+     */
+    static boolean containsBytes(byte[] haystack, int len, byte[] needle) {
+        if (needle.length == 0) {
+            return true;
+        }
+        int last = len - needle.length;
+        outer:
+        for (int i = 0; i <= last; i++) {
+            if (haystack[i] != needle[0]) {
+                continue;
+            }
+            for (int j = 1; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     /** {@link #readEntryRawCached} で開いたハンドルをまとめて閉じる（null 可）。 */
