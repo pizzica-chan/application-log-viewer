@@ -575,6 +575,12 @@ button.field-hint-trigger:focus-visible {
   color: var(--text);
 }
 
+/* どちらの判定方法の話かを示す印 */
+.session-trace-limits em {
+  color: var(--accent);
+  font-style: normal;
+}
+
 /* 追跡結果: リクエストごとの見出し行と、セッション ID を含む行 */
 tbody tr.trace-group {
   cursor: default;
