@@ -1019,6 +1019,68 @@ public final class LogIndex {
         return false;
     }
 
+    /**
+     * バイト列のまま部分一致を探す（ASCII の大文字小文字を無視する）。
+     *
+     * <p>{@link java.util.regex.Pattern#CASE_INSENSITIVE} だけを立てた正規表現は
+     * ASCII の範囲しか畳まない（Unicode を畳むには {@code UNICODE_CASE} が要る）。
+     * UTF-8 では ASCII のバイトは ASCII 文字としてしか現れないので、ASCII だけを
+     * 畳んで比べれば、デコードしてから照合した場合と同じ結果になる。
+     *
+     * @param lowerNeedle あらかじめ ASCII を小文字にした探す側のバイト列
+     */
+    static boolean containsBytesIgnoreAsciiCase(byte[] haystack, int len, byte[] lowerNeedle) {
+        if (lowerNeedle.length == 0) {
+            return true;
+        }
+        int last = len - lowerNeedle.length;
+        outer:
+        for (int i = 0; i <= last; i++) {
+            for (int j = 0; j < lowerNeedle.length; j++) {
+                if (toLowerAscii(haystack[i + j]) != lowerNeedle[j]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** ASCII の大文字だけを小文字にする（多バイト文字のバイトはそのまま）。 */
+    static byte toLowerAscii(byte b) {
+        return (b >= 'A' && b <= 'Z') ? (byte) (b + ('a' - 'A')) : b;
+    }
+
+    /** ASCII の大文字だけを小文字にしたバイト列を返す。 */
+    static byte[] toLowerAscii(byte[] bytes) {
+        byte[] out = new byte[bytes.length];
+        for (int i = 0; i < bytes.length; i++) {
+            out[i] = toLowerAscii(bytes[i]);
+        }
+        return out;
+    }
+
+    /**
+     * {@link #readEntryRawCached} と同じ読み出しだが、失敗を隠さず投げる。
+     * 「読めなかった」を「一致しなかった」と同じ扱いにすると、結果が静かにずれるため。
+     */
+    static String readEntryRaw(Map<String, RandomAccessFile> handles, EntryRow e)
+            throws IOException {
+        RandomAccessFile file = handles.get(e.source);
+        if (file == null) {
+            file = new RandomAccessFile(e.source, "r");
+            handles.put(e.source, file);
+        }
+        long size = e.endByteOffset > e.byteOffset ? e.endByteOffset - e.byteOffset : 0;
+        if (size <= 0) {
+            return "";
+        }
+        file.seek(e.byteOffset);
+        byte[] buf = new byte[(int) Math.min(size, Integer.MAX_VALUE)];
+        file.readFully(buf);
+        return new String(buf, StandardCharsets.UTF_8);
+    }
+
     /** {@link #readEntryRawCached} で開いたハンドルをまとめて閉じる（null 可）。 */
     static void closeHandles(Map<String, RandomAccessFile> handles) {
         if (handles == null) {

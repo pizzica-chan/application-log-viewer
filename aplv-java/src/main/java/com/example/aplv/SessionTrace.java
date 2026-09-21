@@ -386,7 +386,8 @@ public final class SessionTrace {
      * 落ちない。1 リクエストが上限を超えたときだけの話なので、判定を合わせるために
      * 上限の先まで読み直すことはしない（画面の制限事項に明記している）。
      */
-    private boolean keepRequest(Request req, Map<String, RandomAccessFile> handles) {
+    private boolean keepRequest(Request req, Map<String, RandomAccessFile> handles)
+            throws IOException {
         if (containsRe == null && excludesRe == null) {
             return true;
         }
@@ -399,7 +400,9 @@ public final class SessionTrace {
         // 前に見たところから先だけを読む。時間窓モードでは継ぎ足しのたびにここへ来るので、
         // 毎回すべての行を読み直すと、1 リクエストが育つほど読み出しが増えてしまう。
         for (int i = req.filterCheckedRows; i < req.entries.size(); i++) {
-            String raw = LogIndex.readEntryRawCached(handles, req.entries.get(i));
+            // 読めなければエラーにする（黙って一致しなかったことにすると、
+            // 絞り込みの結果が静かにずれる）
+            String raw = LogIndex.readEntryRaw(handles, req.entries.get(i));
             if (excludesRe != null && excludesRe.matcher(raw).find()) {
                 req.excludeHit = true;
                 req.filterCheckedRows = i + 1;
@@ -422,7 +425,7 @@ public final class SessionTrace {
      * 増えた行に「含む」の語が出れば拾い直し、「除く」の語が出れば落とす。
      */
     private void reconcileFilter(Result result, Request req,
-            Map<String, RandomAccessFile> handles) {
+            Map<String, RandomAccessFile> handles) throws IOException {
         if (!req.rowsAppended || (containsRe == null && excludesRe == null)) {
             req.rowsAppended = false;
             return;
@@ -460,16 +463,12 @@ public final class SessionTrace {
     }
 
     /**
-     * 識別子を含みうるエントリを時刻順に返すクエリ。含むかどうかの最終判定は呼び出し側で行う。
+     * いまの行が識別子を含むか。文字列の列は取り出さず、byte 範囲を読んでバイト列のまま照合する。
      *
      * <p>照合はスタックトレースを含むエントリ全体に対して行う（一覧の全文検索と同じ範囲）。
-     * FTS5 があれば trigram で候補を絞ってから確かめる。trigram は大文字小文字を区別しないので
-     * 候補は取りこぼさず、最終判定の {@link String#contains} で区別する。
+     * 大文字小文字は区別する（{@link LogIndex#containsBytes} はバイト列をそのまま比べる）。
      * 識別子を正規表現として扱わないのは、jvmRoute 付きの JSESSIONID（{@code ABC.node1}）の
      * {@code .} などをメタ文字にしないため。
-     */
-    /**
-     * いまの行が識別子を含むか。文字列の列は取り出さず、byte 範囲を読んでバイト列のまま照合する。
      *
      * <p>一致しない行が大半なので、ここで {@code logger} などの文字列を取り出すと、
      * 使われない文字列の生成に時間を取られる（実測は {@link LogIndex.SequentialRawReader}）。
@@ -510,6 +509,13 @@ public final class SessionTrace {
         return needle;
     }
 
+    /**
+     * 識別子を含みうるエントリを時刻順に返すクエリ。含むかどうかの最終判定は
+     * {@link #anchorMatches} で行う。
+     *
+     * <p>FTS5 があれば trigram で候補を絞る。trigram は大文字小文字を区別しないので
+     * 候補は取りこぼさず、最終判定で区別する。
+     */
     private PreparedStatement prepareAnchorQuery(Connection conn) throws SQLException {
         StringBuilder sql = new StringBuilder(LogIndex.selectBase());
         boolean useFts = sessionId.length() >= FTS_MIN_LEN && LogIndex.ftsAvailable(conn);

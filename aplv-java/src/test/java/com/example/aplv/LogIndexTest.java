@@ -655,4 +655,99 @@ class LogIndexTest {
             }
         }
     }
+
+    /**
+     * 大文字小文字を無視するバイト列照合が、既存の grep（ASCII だけ畳む正規表現）と
+     * 同じ判定になること。多バイト文字は畳まれない。
+     */
+    @Test
+    void containsBytesIgnoreAsciiCaseMatchesRegex() {
+        String[] haystacks = {
+            "sessionId=8F3A2C91D4E6B7A0 items=3",
+            "SESSIONID=ABC",
+            "決済が拒否されました PaymentException",
+            "ＡＢＣ 全角",
+            // 「ぢ」(E3 81 A2) は「あ」(E3 81 82) と 0x20 しか違わない。多バイトまで畳むと誤検知する
+            "ぢから",
+        };
+        String[] needles = {"sessionid", "SESSIONID", "PaymentException", "paymentexception",
+            "決済", "ＡＢＣ", "abc", "見つからない", "あ", "ぢ"};
+        for (String h : haystacks) {
+            byte[] hay = h.getBytes(StandardCharsets.UTF_8);
+            for (String n : needles) {
+                boolean byRegex = java.util.regex.Pattern
+                        .compile(java.util.regex.Pattern.quote(n),
+                                java.util.regex.Pattern.CASE_INSENSITIVE)
+                        .matcher(h).find();
+                byte[] lower = LogIndex.toLowerAscii(n.getBytes(StandardCharsets.UTF_8));
+                assertEquals(byRegex,
+                        LogIndex.containsBytesIgnoreAsciiCase(hay, hay.length, lower),
+                        h + " / " + n);
+            }
+        }
+    }
+
+    /**
+     * grep のリテラル経路（バイト列照合）と正規表現経路が同じ結果を返すこと。
+     * 大文字小文字・多バイト・3 文字未満・スタックトレース内の語で確かめる。
+     */
+    @Test
+    void grepLiteralPathMatchesRegexPath(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15 00:00:01.000[main][ERROR][com.example.Foo] - 決済に失敗 sessionId=ABC123\n"
+                        + "java.lang.RuntimeException: PaymentException session=ABC123\n"
+                        + "\tat com.example.Foo.run(Foo.java:10)\n"
+                        + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - SESSIONID=xyz\n"
+                        + "2026-06-15 00:00:03.000[main][INFO][com.example.Foo] - 無関係な行\n");
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.DEFAULT);
+            String[] words = {"sessionId", "SESSIONID", "ABC123", "決済", "ID",
+                "PaymentException", "見つからない語"};
+            for (String word : words) {
+                QueryFilter literal = new QueryFilter();
+                literal.grepRe = QueryFilter.compileRegex(word);
+                literal.grepText = word;
+                // 正規表現として扱わせる（メタ文字を足しても同じ範囲に一致する形にする）
+                QueryFilter regex = new QueryFilter();
+                regex.grepRe = QueryFilter.compileRegex("(?:" + java.util.regex.Pattern.quote(word) + ")");
+                regex.grepText = null;
+
+                LogQuery.Result byLiteral = LogQuery.queryLogs(conn, literal, 0, 10);
+                LogQuery.Result byRegex = LogQuery.queryLogs(conn, regex, 0, 10);
+                assertEquals(byRegex.total, byLiteral.total, word);
+                assertEquals(byRegex.page.size(), byLiteral.page.size(), word);
+                for (int i = 0; i < byRegex.page.size(); i++) {
+                    assertEquals(byRegex.page.get(i).lineNo, byLiteral.page.get(i).lineNo, word);
+                    assertEquals(byRegex.page.get(i).raw, byLiteral.page.get(i).raw, word);
+                }
+            }
+        }
+    }
+
+    /**
+     * メタ文字を含む指定は、リテラルのバイト照合ではなく正規表現として扱うこと。
+     * {@code .} を 1 文字として解釈するかどうかで結果が変わる入力で確かめる。
+     */
+    @Test
+    void grepWithMetaCharsUsesRegexPath(@TempDir Path tmp) throws Exception {
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15 00:00:01.000[main][INFO][com.example.Foo] - code=ABC123\n"
+                        + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - code=ABC.23\n");
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.DEFAULT);
+            // API と同じく、grepText には入力そのものが入る
+            QueryFilter f = new QueryFilter();
+            f.grepRe = QueryFilter.compileRegex("ABC.23");
+            f.grepText = "ABC.23";
+            // 正規表現なら . が任意の 1 文字なので 2 件、リテラル照合なら 1 件になる
+            assertEquals(2, LogQuery.queryLogs(conn, f, 0, 10).total);
+
+            QueryFilter literal = new QueryFilter();
+            literal.grepRe = QueryFilter.compileRegex("ABC123");
+            literal.grepText = "ABC123";
+            assertEquals(1, LogQuery.queryLogs(conn, literal, 0, 10).total);
+        }
+    }
 }

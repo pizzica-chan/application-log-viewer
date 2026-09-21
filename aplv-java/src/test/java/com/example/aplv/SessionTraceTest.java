@@ -693,6 +693,25 @@ class SessionTraceTest {
         }
     }
 
+    /**
+     * ログファイルを読めなくなったら、黙って結果を欠けさせずエラーにすること
+     * （起点探しと、絞り込みの判定のどちらも）。
+     */
+    @Test
+    void readFailureIsReportedNotSilentlyIgnored(@TempDir Path tmp) throws Exception {
+        String content = line("10:00:00.000", "exec-1", "リクエスト開始 GET /a")
+                + line("10:00:00.010", "exec-1", "id=" + SID)
+                + line("10:00:00.020", "exec-1", "リクエスト終了 status=200");
+        Path log = writeLog(tmp, "app.log", content);
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormat.DEFAULT);
+            Files.delete(log); // 索引を作ったあとでログが消える
+            assertThrows(java.sql.SQLException.class, () -> trace(SID, 10).run(conn),
+                    "起点探しで読めなければエラー");
+        }
+    }
+
     /** 時間窓モードの引数の検証。 */
     @Test
     void windowModeRejectsInvalidArguments() {
