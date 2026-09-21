@@ -198,6 +198,7 @@ class SavedSearchesStoreTest {
         assertEquals("残す", items.get(0).name);
         assertEquals("Exception", items.get(0).fields.get("grep"));
         assertEquals(2, store().load().skipped);
+        assertFalse(store().load().overflow);
     }
 
     /** 201 件あるファイルは先頭 200 件だけ返し、余りはスキップすること。 */
@@ -207,6 +208,7 @@ class SavedSearchesStoreTest {
         SavedSearchesStore.LoadResult loaded = store().load();
         assertEquals(SavedSearchesStore.MAX_ITEMS, loaded.items.size());
         assertEquals(1, loaded.skipped);
+        assertTrue(loaded.overflow);
     }
 
     /**
