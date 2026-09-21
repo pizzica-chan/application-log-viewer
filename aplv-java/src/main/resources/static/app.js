@@ -716,8 +716,22 @@ function collectFilterFields() {
   return fields;
 }
 
+/** 入力欄の既定値（HTML に書いた値）。保存に無い項目はここへ戻す。 */
+function defaultFieldValue(el) {
+  if (el.tagName === "SELECT") {
+    const selected = el.querySelector("option[selected]");
+    return selected ? selected.value : (el.options[0] ? el.options[0].value : "");
+  }
+  return el.defaultValue;
+}
+
 function applyFilterFields(fields) {
   const panel = TAB_UI[activeTab()].panel();
+  // 保存に含まれない項目に前の入力が残ると、条件が混ざって分かりにくい。
+  // 「適用 = 保存したときの状態を再現」に揃えるため、いったん既定値へ戻す。
+  for (const el of panel.querySelectorAll("input[id], select[id]")) {
+    el.value = defaultFieldValue(el);
+  }
   for (const [id, value] of Object.entries(fields || {})) {
     // 正規表現を含む値は文字列のまま入力欄へ戻す。id もリテラルとして扱い、
     // セレクタ結合や他パネルの要素（ログディレクトリ等）へは書かない。
@@ -801,17 +815,14 @@ async function renderSavedSearchList() {
     const applyBtn = document.createElement("button");
     applyBtn.type = "button";
     applyBtn.textContent = "適用";
+    // 条件を入れるだけにする（実行は利用者が「検索」「追跡」を押したとき）。
+    // 重いログでは、呼び出しただけで走るほうが困るため。
     applyBtn.addEventListener("click", () => {
       const mode = saved.mode === "trace" ? "trace" : "search";
       setActiveTab(mode);
       applyFilterFields(saved.fields);
       els.savedSearchesDialog.close();
       offset = 0;
-      if (mode === "trace") {
-        runSessionTrace();
-      } else {
-        loadLogs();
-      }
     });
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
