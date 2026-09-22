@@ -110,7 +110,7 @@ docker compose down
 | `APLV_LOG_DIR` | ホスト側のログディレクトリを差し替え（例: `$env:APLV_LOG_DIR="C:\logs\app"`） |
 | `APLV_HOME=/app` | コンテナ内のリポジトリルート（インデックス・検索条件の基準） |
 
-検索条件ファイルと書式ファイルがホスト側に無いと Docker がディレクトリを作ることがあるので、`docker-up.bat` は空の JSON を先に作ります。`docker compose` だけ使うときは、同じ 2 ファイルを先に置いてください。
+`docker-up.bat` は bind mount 用に空の `aplv-saved-searches.json` と空の `aplv-log-formats.txt` を先に用意します（ないと Docker がディレクトリを作ることがあるため）。アプリ本体は書式を 1 件も登録しないあいだ `aplv-log-formats.txt` を自動では作りません。`docker compose` だけ使うときも同様に先に置いてください。
 
 **ホストポート:** 既定は **`8766`** で、`127.0.0.1` にのみ公開します（無認証のため LAN へ露出させない）。競合する場合は `docker-compose.yml` の `ports` を `"127.0.0.1:18766:8766"` のように変更し、ブラウザも合わせてください。
 
