@@ -1039,10 +1039,12 @@ public final class LogServer {
         JsonObject payload = new JsonObject();
         CustomLogFormat format;
         try {
-            // id は試し打ちでは使わないが、検査を本番と揃えるため仮の値を通す。
-            // 日時書式が空のときは、正規表現だけを見るために仮の書式で組み立てる
-            // （この仮の値は結果に出さない）。
-            format = LogFormatStore.create("try", jsonString(obj, "name"),
+            // 失敗したときに画面へ出る呼び名。まだ id を入れていないこともあるので、
+            // そのときは仮の英字 id ではなく、読んで意味の通る名前を入れる
+            // （「書式 try で解析に失敗しました」では、どの書式のことか分からない）。
+            // 日時書式が空のときは、正規表現だけを見るために仮の値で組み立てる。
+            format = LogFormatStore.createForTry(tryLabel(jsonString(obj, "id")),
+                    jsonString(obj, "name"),
                     jsonString(obj, "pattern"), timestampChecked ? timestamp : "yyyy");
         } catch (IllegalArgumentException e) {
             sendErrorJson(ex, 400, e.getMessage());
@@ -1113,6 +1115,12 @@ public final class LogServer {
         String why = format.timestampError(ts);
         return "正規表現は一致しましたが、ts に取れた「" + ts + "」を日時として読めません: "
                 + (why != null ? why : "日時書式「" + format.timestampPattern() + "」を見直してください");
+    }
+
+    /** 試し打ちの失敗文に出す呼び名。id を入れていればそれ、無ければ日本語の呼び名。 */
+    private static String tryLabel(String id) {
+        String trimmed = id != null ? id.trim() : "";
+        return trimmed.isEmpty() ? "いま入力中のもの" : trimmed;
     }
 
     private static JsonObject logFormatJson(CustomLogFormat f) {

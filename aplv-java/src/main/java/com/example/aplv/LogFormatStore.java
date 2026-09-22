@@ -335,11 +335,32 @@ public final class LogFormatStore {
         if (LogFormat.byId(id) != null || "auto".equals(id)) {
             throw new IllegalArgumentException("id が組み込み書式と重なっています: " + id);
         }
+        return build(id, name, pattern, timestamp);
+    }
+
+    /**
+     * 試し打ち用に 1 件作る。<strong>保存しないので id の検査だけは行わない。</strong>
+     *
+     * <p>id の規則（英小文字・数字・ハイフン、組み込みと重ねない）は、ファイルの節名と
+     * URL に載せるための決まりで、書式の振る舞いには関わらない。試し打ちではまだ id を
+     * 入れていないこともあるので、そこで止めると<strong>正規表現を組み立てる前に
+     * 詰まる</strong>。正規表現・日時書式・名前の検査は {@link #create} と同じものを通す
+     * ―― ここを別にすると、試せたのに登録できない書式ができる。
+     *
+     * @param label 失敗したときに画面へ出す呼び名。id の位置に入る
+     */
+    public static CustomLogFormat createForTry(String label, String name, String pattern,
+            String timestamp) {
+        return build(label, name, pattern, timestamp);
+    }
+
+    private static CustomLogFormat build(String id, String name, String pattern,
+            String timestamp) {
         String label = name == null || name.trim().isEmpty() ? id : name.trim();
         requireValue(KEY_NAME, label, MAX_NAME_CHARS);
-        requireValue(KEY_PATTERN, pattern, MAX_PATTERN_CHARS);
-        requireValue(KEY_TIMESTAMP, timestamp, MAX_TIMESTAMP_CHARS);
-        return new CustomLogFormat(id, label, pattern, timestamp);
+        requireValue(KEY_PATTERN, trimOrNull(pattern), MAX_PATTERN_CHARS);
+        requireValue(KEY_TIMESTAMP, trimOrNull(timestamp), MAX_TIMESTAMP_CHARS);
+        return new CustomLogFormat(id, label, trimOrNull(pattern), trimOrNull(timestamp));
     }
 
     private static String trimOrNull(String v) {

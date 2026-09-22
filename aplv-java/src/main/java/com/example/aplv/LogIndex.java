@@ -794,6 +794,9 @@ public final class LogIndex {
         // 組み込み書式のときは custom == null で、従来と同じ経路をそのまま通る。
         final LogFormat builtin = format.builtin();
         final CustomLogFormat custom = format.custom();
+        // 1 行ごとに確保しないよう、正規表現が当たったかの受け皿は使い回す
+        // （このメソッドはファイルごとに 1 本のスレッドで走る）。
+        final boolean[] matchedShape = new boolean[1];
         try (InputStream raw = Files.newInputStream(path);
              InputStream in = new BufferedInputStream(raw, 1 << 16);
              ByteLineReader reader = new ByteLineReader(in)) {
@@ -808,6 +811,11 @@ public final class LogIndex {
                     continue;
                 }
                 LogParser.ParsedLine parsed;
+                // 利用者定義の書式で「正規表現は当たったのに日時を読めなかった」行。
+                // 直すべき書式がある行なので、継続行（本文）と混ぜずに数える。混ぜると
+                // 日時書式の間違いが画面のどこにも出ない。組み込み書式の扱いは変えない
+                // ―― あちらは以前から、形だけ合っている行も本文へ入れている。
+                boolean unreadableHeader = false;
                 if (custom == null) {
                     boolean header =
                             LogParser.looksLikeHeader(builtin, reader.lineBuf, reader.lineLen);
@@ -815,16 +823,17 @@ public final class LogIndex {
                             ? LogParser.parse(builtin, reader.lineBuf, reader.lineLen) : null;
                 } else {
                     try {
-                        parsed = custom.parse(reader.lineBuf, reader.lineLen);
+                        parsed = custom.parse(reader.lineBuf, reader.lineLen, matchedShape);
                     } catch (CustomLogFormat.FormatFailure e) {
                         // 暴走した正規表現や壊れた定義。黙って固まる・原因不明で落ちるより、
                         // どの書式のどこで止めたかが分かる形で失敗させる。
                         throw new IOException(e.getMessage() + "（" + path + " の "
                                 + lineNo + " 行目）", e);
                     }
+                    unreadableHeader = parsed == null && matchedShape[0];
                 }
                 if (parsed == null) {
-                    if (pending == null) {
+                    if (pending == null || unreadableHeader) {
                         skippedCounter.incrementAndGet();
                         if (skippedSamples.size() < MAX_SKIPPED_SAMPLES) {
                             skippedSamples.add(new SkippedLine(fileId, lineNo,

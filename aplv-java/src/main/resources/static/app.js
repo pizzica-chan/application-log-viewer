@@ -546,7 +546,12 @@ function syncLogFormatSelect(data) {
   // 初期値（既定書式）が入っているので、条件を付けないと「まだ判定していないのに
   // 既定書式が選ばれた」ように見える。
   if (data.log_format_auto && data.log_format_name && data.load_status === "ready") {
-    auto.textContent = `書式: 自動判定（${data.log_format_name}）`;
+    // 利用者定義が選ばれたことは必ず出す。自動判定は一致した行数で決めるので、
+    // 広い正規表現の書式は組み込みを越えて選ばれうる。ここが黙っていると、
+    // 自分が登録した書式で読まれていることに気づけない。
+    auto.textContent = data.log_format_custom
+      ? `書式: 自動判定（${data.log_format_name}・利用者定義）`
+      : `書式: 自動判定（${data.log_format_name}）`;
   } else {
     auto.textContent = "書式: 自動判定";
   }

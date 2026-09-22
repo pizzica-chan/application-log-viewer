@@ -218,6 +218,26 @@ public final class CustomLogFormat {
      * @throws BudgetExceededException 正規表現が行長に見合わない量の後戻りをした場合
      */
     public LogParser.ParsedLine parse(byte[] b, int len) {
+        return parse(b, len, null);
+    }
+
+    /**
+     * バイト列を 1 ヘッダ行として解析する。ヘッダでなければ {@code null}。
+     *
+     * <p><strong>{@code null} には 2 つの意味がある。</strong>正規表現が当たらなかった
+     * （＝継続行）のと、当たったが {@code ts} を日時として読めなかったのとでは、
+     * 呼び出し側の扱いが変わる。前者は直前のエントリの本文、後者は<strong>直すべき
+     * 書式がある読み飛ばし</strong>で、混ぜると日時書式の間違いが画面のどこにも出ない。
+     *
+     * @param matchedShape {@code null} でなければ、正規表現が当たったかを {@code [0]} に書く。
+     *                     取り込みは 1 行ごとにここを通るので、返り値を増やさず使い回しの
+     *                     配列へ書いて、1 行あたりの確保を増やさない
+     * @throws BudgetExceededException 正規表現が行長に見合わない量の後戻りをした場合
+     */
+    public LogParser.ParsedLine parse(byte[] b, int len, final boolean[] matchedShape) {
+        if (matchedShape != null) {
+            matchedShape[0] = false;
+        }
         int end = len;
         while (end > 0 && (b[end - 1] == '\n' || b[end - 1] == '\r')) {
             end--;
@@ -229,7 +249,7 @@ public final class CustomLogFormat {
         return guarded(new Supplier<LogParser.ParsedLine>() {
             @Override
             public LogParser.ParsedLine get() {
-                return match(line);
+                return match(line, matchedShape);
             }
         });
     }
@@ -264,10 +284,13 @@ public final class CustomLogFormat {
         return pattern.matcher(new BoundedCharSequence(id, line, budgetFor(line.length())));
     }
 
-    private LogParser.ParsedLine match(String line) {
+    private LogParser.ParsedLine match(String line, boolean[] matchedShape) {
         Matcher m = matcher(line);
         if (!m.matches()) {
             return null;
+        }
+        if (matchedShape != null) {
+            matchedShape[0] = true;
         }
         String ts = m.group(GROUP_TS);
         if (ts == null) {
