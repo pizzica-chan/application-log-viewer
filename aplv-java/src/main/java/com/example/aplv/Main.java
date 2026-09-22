@@ -25,7 +25,7 @@ public final class Main {
         int port = 8766;
         String dir = null;
         boolean enableFts = false;
-        LogFormat logFormat = null;
+        String formatId = null;
 
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
@@ -53,14 +53,9 @@ public final class Main {
                     break;
                 case "--format": {
                     String value = requireValue(args, ++i, "--format");
-                    if (!"auto".equals(value)) {
-                        logFormat = LogFormat.byId(value);
-                        if (logFormat == null) {
-                            System.err.println("不明なログ書式: " + value);
-                            printUsage();
-                            System.exit(2);
-                        }
-                    }
+                    // 利用者定義の書式も指定できるようにするため、ここでは id を覚えるだけ。
+                    // 解決は書式ファイルを読んでから行う。
+                    formatId = "auto".equals(value) ? null : value;
                     break;
                 }
                 case "-h":
@@ -87,6 +82,24 @@ public final class Main {
             } catch (IOException e) {
                 System.err.println("ログ探索に失敗しました: " + e.getMessage());
                 System.exit(1);
+            }
+        }
+
+        LogFormatSpec logFormat = null;
+        if (formatId != null) {
+            List<CustomLogFormat> customs = Collections.emptyList();
+            LogFormatStore store = new LogFormatStore(LogFormatStore.defaultFile());
+            try {
+                customs = store.load();
+            } catch (IOException e) {
+                System.err.println("書式ファイルを読めません: " + e.getMessage());
+                System.exit(1);
+            }
+            logFormat = LogFormatSpec.byId(formatId, customs);
+            if (logFormat == null) {
+                System.err.println("不明なログ書式: " + formatId);
+                printUsage();
+                System.exit(2);
             }
         }
 
@@ -121,5 +134,7 @@ public final class Main {
         }
         System.out.println("  --format ログ書式を固定する（省略時は先頭ファイルから自動判定）");
         System.out.println("          auto" + ids);
+        System.out.println("          " + LogFormatStore.FILE_NAME
+                + " に書いた利用者定義の書式の id も指定できる");
     }
 }

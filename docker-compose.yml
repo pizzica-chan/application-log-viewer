@@ -16,4 +16,6 @@ services:
       - ./tmp:/app/tmp
       # 検索条件。無いと Docker がディレクトリを作るので、起動スクリプトが空ファイルを用意する
       - ./aplv-saved-searches.json:/app/aplv-saved-searches.json
+      # 利用者定義のログ書式。同じく起動スクリプトが空ファイルを用意する
+      - ./aplv-log-formats.txt:/app/aplv-log-formats.txt
     command: ["--host", "0.0.0.0", "--port", "8766", "--dir", "/app/logs/samples"]

@@ -1,9 +1,5 @@
 package com.example.aplv;
 
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -97,49 +93,17 @@ public enum LogFormat {
     }
 
     /**
-     * 先頭ファイルの冒頭を読み、最もよく一致する書式を返す。
+     * 先頭ファイルの冒頭を読み、最もよく一致する<strong>組み込み書式</strong>を返す。
      *
-     * <p>どの書式でも 1 行も解析できなかった場合は {@link #DEFAULT} を返す。誤判定しても
-     * 「認識できなかった行」として画面に出るうえ、UI から明示的に切り替えられるため、
-     * ここでは黙って最善手を選ぶ方針とする。
-     *
-     * <p>先頭にコメントや回転ヘッダが入るログがあるため、先頭行が一致することは求めず、
-     * {@link #DETECT_SAMPLE_LINES} 行のうち解析できた行数で比較する。
+     * <p>判定そのものは {@link LogFormatSpec#detect} が行う。利用者定義の書式も候補に
+     * したい本番経路はそちらを直接呼ぶこと。ここは組み込み書式だけを相手にする
+     * 呼び出し口で、判定の規則（サンプル行数・同数のときの優先順）を二重に持たない
+     * ようにするため委譲している。
      *
      * @param paths 取り込む対象。先頭の 1 つだけを見る（同時取り込みは同一書式の前提）
      */
     public static LogFormat detect(List<Path> paths) {
-        if (paths == null || paths.isEmpty()) {
-            return DEFAULT;
-        }
-        int[] hits = new int[values().length];
-        try (InputStream raw = Files.newInputStream(paths.get(0));
-             InputStream in = new BufferedInputStream(raw, 1 << 16);
-             ByteLineReader reader = new ByteLineReader(in)) {
-            int seen = 0;
-            while (seen < DETECT_SAMPLE_LINES && reader.next()) {
-                seen++;
-                if (reader.isBlankLine()) {
-                    continue;
-                }
-                for (LogFormat f : values()) {
-                    if (LogParser.parse(f, reader.lineBuf, reader.lineLen) != null) {
-                        hits[f.ordinal()]++;
-                    }
-                }
-            }
-        } catch (IOException e) {
-            return DEFAULT;
-        }
-        LogFormat best = DEFAULT;
-        int bestHits = 0;
-        // 同数のときは宣言順（DEFAULT が先頭）を優先する。
-        for (LogFormat f : values()) {
-            if (hits[f.ordinal()] > bestHits) {
-                best = f;
-                bestHits = hits[f.ordinal()];
-            }
-        }
-        return best;
+        LogFormat builtin = LogFormatSpec.detect(paths, null).builtin();
+        return builtin != null ? builtin : DEFAULT;
     }
 }

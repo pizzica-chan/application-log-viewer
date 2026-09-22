@@ -76,7 +76,7 @@ public final class LogIndex {
     private static final int MAX_SKIPPED_SAMPLES = 5;
     private static final int PREVIEW_MAX_LEN = 120;
     private static final String META_SKIPPED_LINES = "skipped_lines";
-    /** 取り込みに使ったログ書式（{@link LogFormat#id()}）。 */
+    /** 取り込みに使ったログ書式（{@link LogFormatSpec#id()}）。 */
     private static final String META_LOG_FORMAT = "log_format";
     private static final String META_SKIPPED_SAMPLES = "skipped_samples";
 
@@ -273,7 +273,7 @@ public final class LogIndex {
 
     /** 保存済みフィンガープリントと異なれば true（再インデックスが必要）。 */
     public static boolean needsRebuild(Connection conn, List<Path> paths, boolean enableFts,
-            LogFormat format)
+            LogFormatSpec format)
             throws SQLException, IOException {
         if (paths.isEmpty()) {
             return false;
@@ -295,12 +295,17 @@ public final class LogIndex {
      * ファイル集合 + FTS 設定 + ログ書式のフィンガープリント（meta 保存用）。
      *
      * <p>書式を変えると解析結果そのものが変わるため、フィンガープリントに含めて
-     * 既存の索引を再利用しないようにする。
+     * 既存の索引を再利用しないようにする。利用者定義の書式では id だけでなく
+     * 正規表現と日時書式も含める（{@link LogFormatSpec#fingerprint()}）。
+     * 含めないと、書式を直したのに古い索引がそのまま使われる。
+     *
+     * <p>組み込み書式では従来どおり id だけが入る。ここの文字列の形を変えると
+     * 既存の索引がすべて作り直しになるため、変えないこと。
      */
-    private static String indexFingerprint(List<Path> paths, boolean enableFts, LogFormat format)
-            throws IOException {
+    private static String indexFingerprint(List<Path> paths, boolean enableFts,
+            LogFormatSpec format) throws IOException {
         return fileFingerprint(paths) + "\nfts:" + (enableFts ? "1" : "0")
-                + "\nformat:" + format.id();
+                + "\nformat:" + format.fingerprint();
     }
 
     /** entries / files テーブルを空にする。 */
@@ -435,7 +440,7 @@ public final class LogIndex {
      * @return 取り込んだエントリ総数と skipped 行の集計
      */
     public static BuildResult buildIndex(Connection conn, List<Path> paths, ProgressCallback progress,
-            boolean enableFts, LogFormat format) throws SQLException, IOException {
+            boolean enableFts, LogFormatSpec format) throws SQLException, IOException {
         boolean prevAutoCommit = conn.getAutoCommit();
         conn.setAutoCommit(false);
         try {
@@ -446,7 +451,7 @@ public final class LogIndex {
     }
 
     private static BuildResult buildIndexTx(Connection conn, List<Path> paths, ProgressCallback progress,
-            boolean enableFts, LogFormat format) throws SQLException, IOException {
+            boolean enableFts, LogFormatSpec format) throws SQLException, IOException {
         dropEntryIndexes(conn);
         clearIndex(conn);
         boolean hasFts;
@@ -625,7 +630,7 @@ public final class LogIndex {
     }
 
     /** 取り込みに使った書式を meta に残す。再利用時に画面へ出すため。 */
-    private static void saveLogFormat(Connection conn, LogFormat format) throws SQLException {
+    private static void saveLogFormat(Connection conn, LogFormatSpec format) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")) {
             ps.setString(1, META_LOG_FORMAT);
@@ -634,14 +639,19 @@ public final class LogIndex {
         }
     }
 
-    /** 取り込みに使った書式。未保存（旧バージョンが作った索引）なら {@code null}。 */
-    public static LogFormat getLogFormat(Connection conn) throws SQLException {
+    /**
+     * 取り込みに使った書式の id。未保存（旧バージョンが作った索引）なら {@code null}。
+     *
+     * <p>利用者定義の書式もありうるので、enum ではなく id をそのまま返す。
+     * 呼び出し側が {@link LogFormatSpec#byId} で引き直す。
+     */
+    public static String getLogFormatId(Connection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT value FROM meta WHERE key = ?")) {
             ps.setString(1, META_LOG_FORMAT);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return LogFormat.byId(rs.getString(1));
+                    return rs.getString(1);
                 }
             }
         }
@@ -779,7 +789,11 @@ public final class LogIndex {
 
     private static void parseFileInto(long fileId, Path path, BlockingQueue<List<Row>> queue,
             boolean collectBody, AtomicLong skippedCounter, List<SkippedLine> skippedSamples,
-            LogFormat format) throws IOException, InterruptedException {
+            LogFormatSpec format) throws IOException, InterruptedException {
+        // 書式は取り込み開始時に確定しているので、分岐の材料はループの外で 1 回だけ取り出す。
+        // 組み込み書式のときは custom == null で、従来と同じ経路をそのまま通る。
+        final LogFormat builtin = format.builtin();
+        final CustomLogFormat custom = format.custom();
         try (InputStream raw = Files.newInputStream(path);
              InputStream in = new BufferedInputStream(raw, 1 << 16);
              ByteLineReader reader = new ByteLineReader(in)) {
@@ -793,9 +807,22 @@ public final class LogIndex {
                 if (reader.isBlankLine()) {
                     continue;
                 }
-                boolean header = LogParser.looksLikeHeader(format, reader.lineBuf, reader.lineLen);
-                LogParser.ParsedLine parsed =
-                        header ? LogParser.parse(format, reader.lineBuf, reader.lineLen) : null;
+                LogParser.ParsedLine parsed;
+                if (custom == null) {
+                    boolean header =
+                            LogParser.looksLikeHeader(builtin, reader.lineBuf, reader.lineLen);
+                    parsed = header
+                            ? LogParser.parse(builtin, reader.lineBuf, reader.lineLen) : null;
+                } else {
+                    try {
+                        parsed = custom.parse(reader.lineBuf, reader.lineLen);
+                    } catch (CustomLogFormat.FormatFailure e) {
+                        // 暴走した正規表現や壊れた定義。黙って固まる・原因不明で落ちるより、
+                        // どの書式のどこで止めたかが分かる形で失敗させる。
+                        throw new IOException(e.getMessage() + "（" + path + " の "
+                                + lineNo + " 行目）", e);
+                    }
+                }
                 if (parsed == null) {
                     if (pending == null) {
                         skippedCounter.incrementAndGet();

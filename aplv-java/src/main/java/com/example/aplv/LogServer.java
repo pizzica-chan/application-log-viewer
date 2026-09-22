@@ -51,6 +51,8 @@ import java.util.regex.PatternSyntaxException;
  *   <li>{@code GET /api/logs/detail} — スタックトレース含む生ログ</li>
  *   <li>{@code GET /api/session-trace} — セッション ID を含むリクエストの追跡</li>
  *   <li>{@code GET/POST/DELETE /api/saved-searches} — 検索条件の保存（ホーム直下の JSON）</li>
+ *   <li>{@code GET/POST/DELETE /api/log-formats} — 利用者定義のログ書式</li>
+ *   <li>{@code POST /api/log-formats/try} — 書式をサンプル 1 行で試す（保存しない）</li>
  * </ul>
  */
 public final class LogServer {
@@ -83,9 +85,9 @@ public final class LogServer {
      * 利用者が明示指定した書式。{@code null} なら取り込みのたびに自動判定する。
      * 自動判定が外れたときに UI から上書きできるようにするための逃げ道。
      */
-    private volatile LogFormat requestedFormat;
+    private volatile LogFormatSpec requestedFormat;
     /** 直近の取り込みで実際に使った書式。画面に出すために保持する。 */
-    private volatile LogFormat resolvedFormat = LogFormat.DEFAULT;
+    private volatile LogFormatSpec resolvedFormat = LogFormatSpec.DEFAULT;
 
     private volatile String loadStatus = "idle"; // idle / loading / ready / error
     private volatile String loadError;
@@ -136,18 +138,26 @@ public final class LogServer {
 
     private final Map<String, byte[]> staticCache = new HashMap<>();
     private final SavedSearchesStore savedSearches;
+    /**
+     * 利用者が定義した書式の置き場所。画面の「書式の管理」から登録・削除すると
+     * このファイルを書き換える。利用者が直接編集してもよい。
+     */
+    private final LogFormatStore logFormats;
+    /** 書式ファイルを読めなかった理由。画面に出して、黙って無視されないようにする。 */
+    private volatile String logFormatsError;
 
     public LogServer(Path logRoot, List<Path> logPaths) {
         this(logRoot, logPaths, false, null);
     }
 
     public LogServer(Path logRoot, List<Path> logPaths, boolean enableFts,
-            LogFormat requestedFormat) {
+            LogFormatSpec requestedFormat) {
         this.logRoot = logRoot;
         this.logPaths = logPaths != null ? logPaths : Collections.<Path>emptyList();
         this.enableFts = enableFts;
         this.requestedFormat = requestedFormat;
         this.savedSearches = new SavedSearchesStore(SavedSearchesStore.defaultFile());
+        this.logFormats = new LogFormatStore(LogFormatStore.defaultFile());
     }
 
     /** サーバを起動して待ち受ける（戻らない）。 */
@@ -171,6 +181,8 @@ public final class LogServer {
         System.out.println("Application Log Viewer (Java): http://" + host + ":" + port);
         System.out.println("インデックス: " + IndexStore.tmpIndexDir() + " (APLV_HOME で repo 変更可)");
         System.out.println("保存した検索条件: " + savedSearches.file() + " (APLV_HOME で変更可)");
+        System.out.println("利用者定義のログ書式: " + logFormats.file()
+                + " (無くてもよい。APLV_HOME で変更可)");
         System.out.println("全文検索 FTS5: " + (enableFts ? "有効" : "無効（--fts で有効化）"));
         System.out.println("ログ書式: "
                 + (requestedFormat != null ? requestedFormat.displayName() : "自動判定"));
@@ -213,6 +225,10 @@ public final class LogServer {
                     handleSessionTrace(ex);
                 } else if ("/api/saved-searches".equals(path)) {
                     handleSavedSearches(ex);
+                } else if ("/api/log-formats".equals(path)) {
+                    handleLogFormats(ex);
+                } else if ("/api/log-formats/try".equals(path)) {
+                    handleLogFormatTry(ex);
                 } else {
                     sendError(ex, 404, "not found");
                 }
@@ -246,8 +262,21 @@ public final class LogServer {
         final List<Path> paths = new ArrayList<>(logPaths);
         // 明示指定が無ければ先頭ファイルの冒頭から判定する。判定は取り込み開始時の 1 回だけで、
         // 1 行あたりの処理は確定した 1 書式ぶんしか走らない。
-        final LogFormat requested = requestedFormat;
-        final LogFormat format = requested != null ? requested : LogFormat.detect(paths);
+        final LogFormatSpec requested = requestedFormat;
+        final LogFormatSpec format;
+        try {
+            // 取り込みでは、書式ファイルを読めないまま進まない。組み込み書式で代用すると、
+            // 索引のフィンガープリントが変わるため、利用者定義で作った索引を消して
+            // 作り直してしまう（しかも黙って別の書式で読む）。
+            format = requested != null ? requested
+                    : LogFormatSpec.detect(paths, logFormats.load());
+        } catch (IOException e) {
+            synchronized (loadLock) {
+                loadStatus = "error";
+                loadError = "書式ファイルを読めません: " + e.getMessage();
+            }
+            return;
+        }
 
         Thread worker = new Thread(() -> {
             // 直前のワーカーは中断されると部分索引を破棄する。その後始末より先に同じ DB を
@@ -324,7 +353,8 @@ public final class LogServer {
                     return;
                 }
                 // 索引を再利用した場合は、そのとき使った書式を meta から引く（判定と食い違わない）。
-                LogFormat used = LogIndex.getLogFormat(newConn);
+                String usedId = LogIndex.getLogFormatId(newConn);
+                LogFormatSpec used = LogFormatSpec.byId(usedId, customFormats());
                 resolvedFormat = used != null ? used : format;
                 MetaSnapshot snapshot = snapshotMeta(newConn, total);
                 synchronized (loadLock) {
@@ -411,6 +441,50 @@ public final class LogServer {
     }
 
     /**
+     * 利用者定義の書式を読み直す。ファイルを直してから画面で読み込み直せば、
+     * サーバを起動し直さずに新しい書式を試せる（中身が変わっていなければ
+     * {@link LogFormatStore} が前回の結果を返すので、読み直しの費用はかからない）。
+     *
+     * <p>読めないときは空として扱い、理由を画面に出す。組み込み書式まで
+     * 巻き添えで使えなくなると、書式ファイルを直すための調査すらできなくなる。
+     */
+    private List<CustomLogFormat> customFormats() {
+        try {
+            List<CustomLogFormat> formats = logFormats.load();
+            logFormatsError = null;
+            return formats;
+        } catch (IOException e) {
+            // 例外によっては message が null になるので、そのまま equals しない
+            String message = String.valueOf(e.getMessage());
+            if (!message.equals(logFormatsError)) {
+                System.err.println("書式ファイルを読めません: " + message);
+            }
+            logFormatsError = message;
+            return Collections.emptyList();
+        }
+    }
+
+    /** 画面の書式プルダウンに出す一覧（組み込み + 利用者定義）。 */
+    private JsonArray formatChoices(List<CustomLogFormat> customs) {
+        JsonArray choices = new JsonArray();
+        for (LogFormat f : LogFormat.values()) {
+            choices.add(formatChoice(f.id(), f.displayName(), false));
+        }
+        for (CustomLogFormat c : customs) {
+            choices.add(formatChoice(c.id(), c.displayName(), true));
+        }
+        return choices;
+    }
+
+    private static JsonObject formatChoice(String id, String name, boolean custom) {
+        JsonObject o = new JsonObject();
+        o.addProperty("id", id);
+        o.addProperty("name", name);
+        o.addProperty("custom", custom);
+        return o;
+    }
+
+    /**
      * 読み込み状態の応答。
      *
      * <p>件数・時刻範囲はロード完了時に確定するため DB を引かない。長時間の全文検索が
@@ -448,10 +522,14 @@ public final class LogServer {
         payload.addProperty("total", total);
         payload.addProperty("first", first);
         payload.addProperty("last", last);
-        LogFormat used = resolvedFormat;
+        LogFormatSpec used = resolvedFormat;
         payload.addProperty("log_format", used.id());
         payload.addProperty("log_format_name", used.displayName());
         payload.addProperty("log_format_auto", requestedFormat == null);
+        payload.add("log_formats", formatChoices(customFormats()));
+        if (logFormatsError != null) {
+            payload.addProperty("log_formats_error", logFormatsError);
+        }
         if (ready && snapshot.skippedLines > 0) {
             payload.addProperty("skipped_lines", snapshot.skippedLines);
             JsonArray samples = new JsonArray();
@@ -551,9 +629,9 @@ public final class LogServer {
             return;
         }
         // "auto"（または未指定）は自動判定。未知の id はエラーにして黙って既定へ落とさない。
-        LogFormat format = null;
+        LogFormatSpec format = null;
         if (!formatId.isEmpty() && !"auto".equals(formatId)) {
-            format = LogFormat.byId(formatId);
+            format = LogFormatSpec.byId(formatId, customFormats());
             if (format == null) {
                 sendErrorJson(ex, 400, "未知のログ書式です: " + formatId);
                 return;
@@ -859,6 +937,199 @@ public final class LogServer {
     }
 
     // ---- API: saved-searches ----------------------------------------------
+
+    /**
+     * 利用者定義のログ書式の読み書き。
+     *
+     * <p>ファイルを手で編集する経路も残してあるので、ここは同じファイルを同じ検査で
+     * 読み書きするだけ。壊れた書式を弾くのは {@link LogFormatStore#create}。
+     */
+    private void handleLogFormats(HttpExchange ex) throws IOException {
+        String method = ex.getRequestMethod();
+        try {
+            if ("GET".equalsIgnoreCase(method)) {
+                LogFormatStore.Loaded loaded = logFormats.loadDetailed();
+                logFormatsError = null;
+                JsonObject payload = new JsonObject();
+                JsonArray items = new JsonArray();
+                for (CustomLogFormat f : loaded.items) {
+                    items.add(logFormatJson(f));
+                }
+                payload.add("items", items);
+                // 書式の件数と行の件数は分けて返す（画面が「書式が N 件」と出すため）
+                payload.addProperty("skipped_formats", loaded.skippedFormats);
+                payload.addProperty("skipped_lines", loaded.skippedLines);
+                // 画面に実際の保存先を出すため、解決済みの絶対パスを返す
+                payload.addProperty("file", PathUtil.normalizePath(logFormats.file()));
+                payload.addProperty("max", LogFormatStore.MAX_FORMATS);
+                sendJson(ex, 200, payload);
+                return;
+            }
+            if ("POST".equalsIgnoreCase(method)) {
+                JsonObject obj = readJsonObject(ex);
+                if (obj == null) {
+                    return;
+                }
+                CustomLogFormat saved = logFormats.upsert(
+                        jsonString(obj, "id"), jsonString(obj, "name"),
+                        jsonString(obj, "pattern"), jsonString(obj, "timestamp"));
+                sendJson(ex, 200, logFormatJson(saved));
+                return;
+            }
+            if ("DELETE".equalsIgnoreCase(method)) {
+                String id = queryParams(ex).get("id");
+                if (id == null || id.isEmpty()) {
+                    sendErrorJson(ex, 400, "id を指定してください");
+                    return;
+                }
+                if (!logFormats.delete(id)) {
+                    sendErrorJson(ex, 404, "指定した書式が見つかりません");
+                    return;
+                }
+                JsonObject payload = new JsonObject();
+                payload.addProperty("deleted", true);
+                sendJson(ex, 200, payload);
+                return;
+            }
+            sendErrorJson(ex, 405, "method not allowed");
+        } catch (IllegalArgumentException e) {
+            sendErrorJson(ex, 400, e.getMessage());
+        } catch (IOException e) {
+            sendErrorJson(ex, 500,
+                    e.getMessage() != null ? e.getMessage() : "書式ファイルの読み書きに失敗しました");
+        }
+    }
+
+    /**
+     * 書式をサンプル 1 行で試す。<strong>保存はしない。</strong>
+     *
+     * <p>正規表現は書いてすぐ当たることのほうが少ない。保存してから取り込み直して
+     * 確かめる往復をなくすため、その場で結果（取り出せた項目、または当たらない理由）を返す。
+     *
+     * <p><strong>日時書式はまだ空でもよい。</strong>利用者はふつう、ログの行を貼って
+     * 正規表現を組み立て、当たることを確かめてから日時書式を書く。そこで日時書式を
+     * 必須にすると、いちばん最初の試し打ちが「日時書式を入れてください」で止まる。
+     * 空のときは正規表現だけを見て、{@code ts} に取れた文字列をそのまま返す。
+     */
+    private void handleLogFormatTry(HttpExchange ex) throws IOException {
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            sendErrorJson(ex, 405, "method not allowed");
+            return;
+        }
+        JsonObject obj = readJsonObject(ex);
+        if (obj == null) {
+            return;
+        }
+        String sample = jsonString(obj, "sample");
+        String timestamp = jsonString(obj, "timestamp").trim();
+        boolean timestampChecked = !timestamp.isEmpty();
+        JsonObject payload = new JsonObject();
+        CustomLogFormat format;
+        try {
+            // id は試し打ちでは使わないが、検査を本番と揃えるため仮の値を通す。
+            // 日時書式が空のときは、正規表現だけを見るために仮の書式で組み立てる
+            // （この仮の値は結果に出さない）。
+            format = LogFormatStore.create("try", jsonString(obj, "name"),
+                    jsonString(obj, "pattern"), timestampChecked ? timestamp : "yyyy");
+        } catch (IllegalArgumentException e) {
+            sendErrorJson(ex, 400, e.getMessage());
+            return;
+        }
+        if (sample.isEmpty()) {
+            sendErrorJson(ex, 400, "試すログの行を入れてください");
+            return;
+        }
+        // 実際の取り込みと同じ経路（バイト列から）で試す
+        byte[] bytes = sample.getBytes(StandardCharsets.UTF_8);
+        LogParser.ParsedLine parsed;
+        try {
+            parsed = timestampChecked ? format.parse(bytes, bytes.length) : null;
+        } catch (CustomLogFormat.FormatFailure e) {
+            sendErrorJson(ex, 400, e.getMessage());
+            return;
+        }
+        String matchedTs;
+        try {
+            matchedTs = format.matchedTimestamp(sample);
+        } catch (CustomLogFormat.FormatFailure e) {
+            sendErrorJson(ex, 400, e.getMessage());
+            return;
+        }
+        payload.addProperty("timestamp_checked", timestampChecked);
+        if (!timestampChecked) {
+            // 正規表現だけを見る。日時として読めるかは、日時書式を入れてから確かめる
+            payload.addProperty("matched", matchedTs != null);
+            if (matchedTs == null) {
+                payload.addProperty("reason", NO_MATCH_REASON);
+            } else {
+                addMatchedGroups(payload, format, sample, matchedTs);
+            }
+            sendJson(ex, 200, payload);
+            return;
+        }
+        payload.addProperty("matched", parsed != null);
+        if (parsed == null) {
+            payload.addProperty("reason", tryFailureReason(format, sample));
+        } else {
+            payload.addProperty("timestamp", TimeUtil.formatIso(parsed.tsMillis));
+            payload.addProperty("level", parsed.level);
+            payload.addProperty("thread", parsed.thread);
+            payload.addProperty("logger", parsed.logger);
+            payload.addProperty("message", parsed.message);
+        }
+        sendJson(ex, 200, payload);
+    }
+
+    /**
+     * 当たらなかった理由を、直せる粒度で返す。
+     * 「一致しない」と「日時を読めない」は直す場所が違うので、必ず区別する。
+     */
+    private static final String NO_MATCH_REASON =
+            "正規表現がこの行に一致しません。行全体（^ から $ まで）に当たる形になっているか確かめてください";
+
+    /** 日時書式がまだ空のときの結果。日時は「取れた文字列」のまま返す。 */
+    private static void addMatchedGroups(JsonObject payload, CustomLogFormat format,
+            String sample, String matchedTs) {
+        payload.addProperty("ts_text", matchedTs);
+        for (Map.Entry<String, String> e : format.matchedGroups(sample).entrySet()) {
+            payload.addProperty(e.getKey(), e.getValue());
+        }
+    }
+
+    private static String tryFailureReason(CustomLogFormat format, String sample) {
+        String ts = format.matchedTimestamp(sample);
+        if (ts == null) {
+            return NO_MATCH_REASON;
+        }
+        String why = format.timestampError(ts);
+        return "正規表現は一致しましたが、ts に取れた「" + ts + "」を日時として読めません: "
+                + (why != null ? why : "日時書式「" + format.timestampPattern() + "」を見直してください");
+    }
+
+    private static JsonObject logFormatJson(CustomLogFormat f) {
+        JsonObject o = new JsonObject();
+        o.addProperty("id", f.id());
+        o.addProperty("name", f.displayName());
+        o.addProperty("pattern", f.patternText());
+        o.addProperty("timestamp", f.timestampPattern());
+        return o;
+    }
+
+    /** 本文を JSON オブジェクトとして読む。読めなければ 400 を返して {@code null}。 */
+    private JsonObject readJsonObject(HttpExchange ex) throws IOException {
+        String body = readBodyLimited(ex, 64 * 1024);
+        try {
+            JsonElement parsed = JsonParser.parseString(body);
+            if (!parsed.isJsonObject()) {
+                sendErrorJson(ex, 400, "JSON を解釈できません");
+                return null;
+            }
+            return parsed.getAsJsonObject();
+        } catch (RuntimeException e) {
+            sendErrorJson(ex, 400, "JSON を解釈できません");
+            return null;
+        }
+    }
 
     /**
      * 検索・追跡条件の保存。値は正規表現を含みうるが、ここでは文字列として読み書きするだけ。

@@ -36,8 +36,9 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $RepoRoot
 
 # マウント先の保存ファイルを先に用意する（無いと Docker がディレクトリを作る）
-. "$PSScriptRoot\Initialize-SavedSearches.ps1"
+. "$PSScriptRoot\Initialize-MountedFiles.ps1"
 Initialize-SavedSearchesFile -RepoRoot $RepoRoot
+Initialize-LogFormatsFile -RepoRoot $RepoRoot
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "docker が PATH にありません。Docker Desktop をインストールしてください。"

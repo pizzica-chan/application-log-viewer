@@ -13,6 +13,23 @@ const els = {
   parseWarningSamples: document.getElementById("parse-warning-samples"),
   logDir: document.getElementById("log-dir"),
   logFormat: document.getElementById("log-format"),
+  formatFileError: document.getElementById("format-file-error"),
+  manageFormats: document.getElementById("manage-formats"),
+  logFormatsDialog: document.getElementById("log-formats-dialog"),
+  logFormatFile: document.getElementById("log-format-file"),
+  logFormatList: document.getElementById("log-format-list"),
+  logFormatEmpty: document.getElementById("log-format-empty"),
+  logFormatSkipped: document.getElementById("log-format-skipped"),
+  logFormatEditorTitle: document.getElementById("log-format-editor-title"),
+  logFormatId: document.getElementById("log-format-id"),
+  logFormatName: document.getElementById("log-format-name"),
+  logFormatPattern: document.getElementById("log-format-pattern"),
+  logFormatTimestamp: document.getElementById("log-format-timestamp"),
+  logFormatSample: document.getElementById("log-format-sample"),
+  logFormatTry: document.getElementById("log-format-try"),
+  logFormatSave: document.getElementById("log-format-save"),
+  logFormatReset: document.getElementById("log-format-reset"),
+  logFormatResult: document.getElementById("log-format-result"),
   browse: document.getElementById("browse"),
   loadDir: document.getElementById("load-dir"),
   fileList: document.getElementById("file-list"),
@@ -464,12 +481,64 @@ async function loadMeta(options = {}) {
 }
 
 /**
+ * 書式のプルダウンをサーバの一覧で作り直す。
+ *
+ * 組み込み書式に加えて、利用者が aplv-log-formats.txt に書いた書式も並ぶ。
+ * ファイルを直して読み込み直せば、サーバを起動し直さずに選べるようになる。
+ * 選択中の値は保てるときだけ保つ（消された書式を選んだままにしない）。
+ */
+function syncLogFormatOptions(formats) {
+  if (!Array.isArray(formats) || formats.length === 0) return;
+  const signature = formats.map((f) => `${f.id}\t${f.name}`).join("\n");
+  if (els.logFormat.dataset.signature === signature) return;
+  els.logFormat.dataset.signature = signature;
+
+  const previous = els.logFormat.value;
+  const auto = els.logFormat.querySelector('option[value="auto"]');
+  const autoText = auto ? auto.textContent : "書式: 自動判定";
+  els.logFormat.innerHTML = "";
+  const autoOption = document.createElement("option");
+  autoOption.value = "auto";
+  autoOption.textContent = autoText;
+  els.logFormat.appendChild(autoOption);
+  for (const f of formats) {
+    if (typeof f.id !== "string" || typeof f.name !== "string") continue;
+    const option = document.createElement("option");
+    option.value = f.id;
+    // 利用者が足した書式だと分かるようにする（組み込みと見分けがつかないと、
+    // 書式ファイルを消したときに選択肢が消えた理由が分からない）。
+    option.textContent = f.custom ? `書式: ${f.name}（利用者定義）` : `書式: ${f.name}`;
+    els.logFormat.appendChild(option);
+  }
+  if (previous && els.logFormat.querySelector(`option[value="${cssEscape(previous)}"]`)) {
+    els.logFormat.value = previous;
+  }
+}
+
+/** セレクタに値を埋めるときのエスケープ（書式 id は英数字とハイフンだが、念のため）。 */
+function cssEscape(value) {
+  if (window.CSS && typeof window.CSS.escape === "function") {
+    return window.CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, "\\$&");
+}
+
+/**
  * 実際に使われた書式をセレクトへ反映する。
  *
  * <p>自動判定のときは「自動判定」の表示を保ったまま、判定結果を option の文言に添える。
  * 利用者が明示指定していた場合はその選択をそのまま残す。
  */
 function syncLogFormatSelect(data) {
+  syncLogFormatOptions(data.log_formats);
+  // 書式ファイルを読めていないことは黙って無視しない。組み込み書式では動くので、
+  // 気づかないまま「自分で足した書式が出てこない」と悩むことになる。
+  if (els.formatFileError) {
+    els.formatFileError.hidden = !data.log_formats_error;
+    els.formatFileError.textContent = data.log_formats_error
+      ? `書式ファイルを読めません: ${data.log_formats_error}`
+      : "";
+  }
   const auto = els.logFormat.querySelector('option[value="auto"]');
   if (!auto) return;
   if (data.log_format_auto && data.log_format_name) {
@@ -514,6 +583,10 @@ function updateMeta(data) {
   if (data.directory) {
     els.logDir.value = data.directory;
   }
+  // 書式のプルダウンは、この先の早期 return より前に作り直す。ディレクトリ未選択・
+  // 読み込み中・読み込み失敗のときも、登録した書式を選べるようにしておかないと、
+  // 「登録したのに 1 回目の読み込みで指定できない」という詰まり方をする。
+  syncLogFormatSelect(data);
   if (data.files.length === 0) {
     metaRange = { first: null, last: null };
     els.meta.textContent = "ログファイル未読み込み — ディレクトリを選択してください";
@@ -556,7 +629,6 @@ function updateMeta(data) {
     `${data.total.toLocaleString()} 行 / ファイル ${data.files.length} 件` +
     (data.first ? ` / ${data.first} 〜 ${data.last}` : "") +
     (data.log_format_name ? ` / 書式: ${data.log_format_name}` : "");
-  syncLogFormatSelect(data);
   els.fileList.textContent = data.files.join(" | ");
   els.fileList.title = data.files.join("\n");
   updateParseWarning(data);
@@ -1424,6 +1496,264 @@ restoreHighlights();
 els.savedSearches.addEventListener("click", () => {
   renderSavedSearchList();
   els.savedSearchesDialog.showModal();
+});
+
+/*
+ * ログ書式の管理。
+ *
+ * サーバ側の aplv-log-formats.txt を読み書きする。ファイルを手で編集する経路も
+ * 残してあるので、ここは同じファイルを触っているだけ。正規表現はそのままの形で
+ * やり取りする（JSON のエスケープは保存時にサーバ側が面倒を見る）。
+ */
+async function loadLogFormats() {
+  const res = await fetch("/api/log-formats", { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || "書式の読み込みに失敗しました。");
+  }
+  return data;
+}
+
+function setLogFormatResult(message, kind) {
+  els.logFormatResult.hidden = !message;
+  els.logFormatResult.textContent = message || "";
+  els.logFormatResult.className = message ? `log-format-result is-${kind}` : "log-format-result";
+}
+
+function clearLogFormatEditor() {
+  els.logFormatId.value = "";
+  els.logFormatName.value = "";
+  els.logFormatPattern.value = "";
+  els.logFormatTimestamp.value = "";
+  els.logFormatEditorTitle.textContent = "新しい書式を登録";
+  setLogFormatResult("", "info");
+}
+
+/** 既存の書式を編集欄へ読み込む（id をそのまま保存すると上書きになる）。 */
+function editLogFormat(format) {
+  els.logFormatId.value = format.id;
+  els.logFormatName.value = format.name;
+  els.logFormatPattern.value = format.pattern;
+  els.logFormatTimestamp.value = format.timestamp;
+  els.logFormatEditorTitle.textContent = `「${format.name}」を編集`;
+  setLogFormatResult("", "info");
+  els.logFormatPattern.focus();
+}
+
+async function renderLogFormatList() {
+  let data;
+  try {
+    data = await loadLogFormats();
+  } catch (e) {
+    els.logFormatEmpty.hidden = false;
+    els.logFormatEmpty.textContent = e.message || "書式の読み込みに失敗しました。";
+    els.logFormatList.innerHTML = "";
+    return;
+  }
+  els.logFormatFile.textContent = data.file || "(不明)";
+  const items = Array.isArray(data.items) ? data.items : [];
+  els.logFormatEmpty.textContent = "登録した書式はまだありません。";
+  els.logFormatEmpty.hidden = items.length > 0;
+  // 書式の件数と行の件数は分けて出す（「書式 3 件」と言われて節が 1 つしか
+  // 無いと、利用者は何を直せばよいか分からなくなる）
+  const skippedParts = [];
+  if (data.skipped_formats) skippedParts.push(`書式 ${data.skipped_formats} 件`);
+  if (data.skipped_lines) skippedParts.push(`行 ${data.skipped_lines} 件`);
+  els.logFormatSkipped.hidden = skippedParts.length === 0;
+  els.logFormatSkipped.textContent = skippedParts.length
+    ? `読めなかった部分があります（${skippedParts.join(" / ")}）。`
+      + "直すまで登録・削除はできません。理由は起動したターミナルに行番号つきで出ています。"
+    : "";
+
+  els.logFormatList.innerHTML = "";
+  for (const format of items) {
+    const li = document.createElement("li");
+    li.className = "saved-search-item";
+
+    const info = document.createElement("div");
+    info.className = "saved-search-info";
+    const name = document.createElement("span");
+    name.className = "saved-search-name";
+    name.textContent = `${format.name}（${format.id}）`;
+    const detail = document.createElement("span");
+    detail.className = "saved-search-meta";
+    detail.textContent = format.timestamp;
+    info.appendChild(name);
+    info.appendChild(detail);
+    li.appendChild(info);
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "編集";
+    editBtn.addEventListener("click", () => editLogFormat(format));
+    li.appendChild(editBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "saved-search-delete";
+    deleteBtn.textContent = "削除";
+    deleteBtn.addEventListener("click", async () => {
+      if (!confirm(`書式「${format.name}」を削除しますか？`)) return;
+      try {
+        const params = new URLSearchParams();
+        params.set("id", format.id);
+        const res = await fetch("/api/log-formats?" + params, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(data.error || "削除に失敗しました。");
+          return;
+        }
+        await renderLogFormatList();
+      } catch (e) {
+        alert(e.message || "削除に失敗しました。");
+      }
+    });
+    li.appendChild(deleteBtn);
+    els.logFormatList.appendChild(li);
+  }
+}
+
+function currentLogFormatInput() {
+  return {
+    id: els.logFormatId.value.trim(),
+    name: els.logFormatName.value.trim(),
+    pattern: els.logFormatPattern.value,
+    timestamp: els.logFormatTimestamp.value.trim(),
+  };
+}
+
+/** 保存せずにサンプル 1 行で試す。どこを直せばよいかを、その場で返す。 */
+async function tryLogFormat() {
+  const body = currentLogFormatInput();
+  body.sample = els.logFormatSample.value.replace(/\r?\n$/, "");
+  if (!body.sample) {
+    setLogFormatResult("試すログの行を入れてください。", "error");
+    return;
+  }
+  try {
+    const res = await fetch("/api/log-formats/try", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLogFormatResult(data.error || "試せませんでした。", "error");
+      return;
+    }
+    if (!data.matched) {
+      setLogFormatResult(data.reason || "この行には一致しませんでした。", "error");
+      return;
+    }
+    // 日時書式がまだ空のときは、正規表現だけを見た結果が返る
+    const parts = [
+      data.timestamp_checked ? `日時: ${data.timestamp}` : `日時の文字列: ${data.ts_text}`,
+      `レベル: ${data.level || "(なし)"}`,
+      `スレッド: ${data.thread || "(なし)"}`,
+      `ロガー: ${data.logger || "(なし)"}`,
+      `メッセージ: ${data.message || "(なし)"}`,
+    ];
+    const note = data.timestamp_checked
+      ? ""
+      : "（日時書式を入れると、この文字列を日時として読めるかも確かめます）";
+    setLogFormatResult("この行から取り出せました — " + parts.join(" / ") + note, "ok");
+  } catch (e) {
+    setLogFormatResult(e.message || "試せませんでした。", "error");
+  }
+}
+
+async function saveLogFormat() {
+  const body = currentLogFormatInput();
+  try {
+    const res = await fetch("/api/log-formats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLogFormatResult(data.error || "登録に失敗しました。", "error");
+      return;
+    }
+    setLogFormatResult(`「${data.name}」を登録しました。書式のプルダウンから選べます。`, "ok");
+    els.logFormatEditorTitle.textContent = `「${data.name}」を編集`;
+    await renderLogFormatList();
+  } catch (e) {
+    setLogFormatResult(e.message || "登録に失敗しました。", "error");
+  }
+}
+
+/**
+ * ガイドの「部品」をクリックしたら、正規表現の欄のカーソル位置へ差し込む。
+ *
+ * 正規表現を 1 から書くのは負担が大きい。ログの行を貼り付けて、変わるところだけを
+ * 部品で置き換える、という進め方ができるようにする。選択範囲があればそれを置き換える。
+ */
+function insertLogFormatPart(snippet) {
+  const el = els.logFormatPattern;
+  const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  const end = el.selectionEnd != null ? el.selectionEnd : el.value.length;
+  el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
+  const caret = start + snippet.length;
+  el.focus();
+  el.setSelectionRange(caret, caret);
+}
+
+for (const button of document.querySelectorAll(".log-format-part")) {
+  button.addEventListener("click", () => {
+    insertLogFormatPart(button.dataset.insert);
+    // 日時の部品は、対になる日時書式が 1 つに決まる。正規表現と日時書式の食い違いは
+    // いちばん多いつまずきなので、選んだ時点で両方そろえる。
+    if (button.dataset.timestamp) {
+      els.logFormatTimestamp.value = button.dataset.timestamp;
+    }
+  });
+}
+
+// 日時書式だけを選ぶボタン（正規表現を手で書いたときのため）
+for (const button of document.querySelectorAll(".log-format-ts-part")) {
+  button.addEventListener("click", () => {
+    els.logFormatTimestamp.value = button.dataset.timestamp;
+    els.logFormatTimestamp.focus();
+  });
+}
+
+els.manageFormats.addEventListener("click", () => {
+  clearLogFormatEditor();
+  renderLogFormatList();
+  els.logFormatsDialog.showModal();
+});
+els.logFormatTry.addEventListener("click", tryLogFormat);
+els.logFormatSave.addEventListener("click", saveLogFormat);
+els.logFormatReset.addEventListener("click", clearLogFormatEditor);
+/*
+ * このダイアログも form method="dialog" なので、input で Enter を押すと暗黙送信が
+ * 走って「閉じる」が発火し、入力中の書式が捨てられる。さらに document 側の Enter
+ * ハンドラまで伝播すると、裏で検索も走ってしまう。保存した検索条件の名前欄と
+ * 同じ扱いにして、Enter では「登録する」を押したのと同じ動きにする。
+ */
+for (const input of [els.logFormatId, els.logFormatName, els.logFormatTimestamp]) {
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.stopPropagation();
+    if (e.isComposing || e.keyCode === 229) return; // IME 確定の Enter では登録しない
+    e.preventDefault();
+    saveLogFormat();
+  });
+}
+/*
+ * 正規表現とサンプルは textarea なので暗黙送信は起きないが、document 側の Enter
+ * ハンドラは拾ってしまう（改行を入れるたびに検索が走る）。伝播だけ止める。
+ */
+for (const area of [els.logFormatPattern, els.logFormatSample]) {
+  area.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") e.stopPropagation();
+  });
+}
+// ダイアログを閉じたら、書式の増減をプルダウンへ反映する
+// （loadMeta が中で updateMeta まで行うので、読み直すだけでよい）
+els.logFormatsDialog.addEventListener("close", () => {
+  loadMeta({ silent: true }).catch(() => {});
 });
 els.savedSearchSave.addEventListener("click", saveCurrentSearch);
 /*

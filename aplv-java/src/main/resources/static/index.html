@@ -10,6 +10,7 @@
   <header>
     <h1>Application Log Viewer</h1>
     <p id="meta">読み込み中...</p>
+    <p id="format-file-error" class="parse-warning" hidden></p>
     <div id="parse-warning" class="parse-warning" hidden>
       <details id="parse-warning-details">
         <summary id="parse-warning-text"></summary>
@@ -23,7 +24,7 @@
       ログディレクトリ
       <div class="dir-input">
         <input id="log-dir" placeholder="例: C:\logs\app">
-        <select id="log-format" title="ログの書式。自動判定は先頭ファイルの冒頭を見て判定します">
+        <select id="log-format" title="ログの書式。自動判定は先頭ファイルの冒頭を見て判定します。aplv-log-formats.txt に書いた書式もここに並びます">
           <option value="auto">書式: 自動判定</option>
           <option value="default">書式: 既定 [Thread][LEVEL][Logger]</option>
           <option value="spring-boot">書式: Spring Boot 既定</option>
@@ -31,6 +32,7 @@
           <option value="iso8601">書式: ISO8601（T 区切り）</option>
           <option value="tomcat-juli">書式: Tomcat catalina.out（JULI）</option>
         </select>
+        <button id="manage-formats" type="button" title="組み込み書式に無いログを読むための書式を、自分で登録・編集できます">書式の管理...</button>
         <button id="browse" type="button">参照...</button>
         <button id="load-dir" type="button">読み込み</button>
       </div>
@@ -418,6 +420,283 @@
       <ul id="saved-search-list" class="saved-search-list"></ul>
       <p id="saved-search-empty" class="saved-search-empty" hidden>保存した検索条件はまだありません。</p>
       <p id="saved-search-skipped" class="saved-search-empty" hidden></p>
+      <div class="saved-searches-actions">
+        <button type="submit">閉じる</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="log-formats-dialog">
+    <form method="dialog" class="log-formats-form">
+      <h2>ログ書式の管理</h2>
+      <p class="saved-search-file-hint">
+        保存先: <code id="log-format-file">読み込み中...</code>
+      </p>
+      <p class="log-format-note">
+        組み込み書式で読めないログを、正規表現で読めるようにします。ここで登録した書式は
+        書式のプルダウンに並び、自動判定の候補にもなります。
+      </p>
+
+      <ul id="log-format-list" class="saved-search-list"></ul>
+      <p id="log-format-empty" class="saved-search-empty" hidden>登録した書式はまだありません。</p>
+      <p id="log-format-skipped" class="saved-search-empty" hidden></p>
+
+      <div class="log-format-editor">
+        <h3 id="log-format-editor-title">新しい書式を登録</h3>
+        <label>
+          id
+          <input id="log-format-id" placeholder="my-app" maxlength="40">
+        </label>
+        <label>
+          名前
+          <input id="log-format-name" placeholder="自社アプリ形式" maxlength="100">
+        </label>
+        <label>
+          正規表現
+          <textarea id="log-format-pattern" rows="3"
+            placeholder="^(?&lt;ts&gt;\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?&lt;level&gt;\w+) \((?&lt;thread&gt;[^)]*)\) (?&lt;logger&gt;\S+) : (?&lt;message&gt;.*)$"></textarea>
+        </label>
+        <label>
+          日時書式
+          <input id="log-format-timestamp" placeholder="yyyy/MM/dd HH:mm:ss.SSS" maxlength="100">
+        </label>
+        <label>
+          試すログの行
+          <textarea id="log-format-sample" rows="2"
+            placeholder="読みたいログから 1 行そのまま貼り付けてください"></textarea>
+        </label>
+        <div class="log-format-actions">
+          <button type="button" id="log-format-try">この行で試す</button>
+          <button type="button" id="log-format-save">登録する</button>
+          <button type="button" id="log-format-reset">入力をクリア</button>
+        </div>
+        <p id="log-format-result" class="log-format-result" hidden></p>
+      </div>
+
+      <details class="log-format-guide">
+        <summary>書き方ガイド</summary>
+        <div class="log-format-guide-body">
+          <h4>考え方</h4>
+          <p>
+            読みたいログの 1 行をそのまま書き写し、<strong>行ごとに変わるところだけを
+            「部品」に置き換える</strong>。これだけです。置き換えた部品に名前を付けると、
+            その中身が一覧の列になります。
+          </p>
+          <table class="log-format-guide-table">
+            <tr>
+              <th>ログの行</th>
+              <td><code>2026/06/15 00:19:11.705 INFO (main) com.example.Hoge : 開始しました</code></td>
+            </tr>
+            <tr>
+              <th>書き写す</th>
+              <td><code>^2026/06/15 00:19:11.705 INFO (main) com.example.Hoge : 開始しました$</code></td>
+            </tr>
+            <tr>
+              <th>置き換える</th>
+              <td><code>^(?&lt;ts&gt;\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?&lt;level&gt;\w+) \((?&lt;thread&gt;[^)]*)\) (?&lt;logger&gt;\S+) : (?&lt;message&gt;.*)$</code></td>
+            </tr>
+          </table>
+          <p>
+            名前は 5 つ決まっていて、<strong><code>ts</code>（日時）だけが必須</strong>です。
+            <code>level</code>・<code>thread</code>・<code>logger</code>・<code>message</code> は
+            必要なものだけ付ければよく、付けなかった列は空欄になります。
+          </p>
+
+          <h4>部品</h4>
+          <p>
+            クリックすると<strong>正規表現の欄に差し込みます</strong>（カーソルの位置に入ります）。
+          </p>
+
+          <p class="log-format-parts-label">日時（どれか 1 つを選ぶ）</p>
+          <div class="log-format-parts">
+            <button type="button" class="log-format-part"
+                    data-insert="(?&lt;ts&gt;\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})"
+                    data-timestamp="yyyy-MM-dd HH:mm:ss.SSS"
+                    title="2026-06-15 00:19:11.705">2026-06-15 00:19:11.705</button>
+            <button type="button" class="log-format-part"
+                    data-insert="(?&lt;ts&gt;\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3})"
+                    data-timestamp="yyyy/MM/dd HH:mm:ss.SSS"
+                    title="2026/06/15 00:19:11.705">2026/06/15 00:19:11.705</button>
+            <button type="button" class="log-format-part"
+                    data-insert="(?&lt;ts&gt;\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})"
+                    data-timestamp="yyyy-MM-dd&#39;T&#39;HH:mm:ss.SSS"
+                    title="2026-06-15T00:19:11.705">2026-06-15T00:19:11.705</button>
+            <button type="button" class="log-format-part"
+                    data-insert="(?&lt;ts&gt;\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"
+                    data-timestamp="yyyy-MM-dd HH:mm:ss"
+                    title="ミリ秒なし">2026-06-15 00:19:11</button>
+            <button type="button" class="log-format-part"
+                    data-insert="(?&lt;ts&gt;\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})"
+                    data-timestamp="yyyy/MM/dd HH:mm:ss"
+                    title="ミリ秒なし">2026/06/15 00:19:11</button>
+            <button type="button" class="log-format-part"
+                    data-insert="(?&lt;ts&gt;\d{2}/[A-Za-z]{3}/\d{4}:\d{2}:\d{2}:\d{2})"
+                    data-timestamp="dd/MMM/yyyy:HH:mm:ss"
+                    title="15/Jun/2026:00:19:11（月名が英語）">15/Jun/2026:00:19:11</button>
+          </div>
+
+          <p class="log-format-parts-label">レベル・スレッド・ロガー・メッセージ</p>
+          <div class="log-format-parts">
+            <button type="button" class="log-format-part" data-insert="(?&lt;level&gt;\w+)"
+                    title="INFO / ERROR のような 1 語。括弧で囲まれていないとき">レベル INFO</button>
+            <button type="button" class="log-format-part" data-insert="\[(?&lt;level&gt;[^\]]*)\]"
+                    title="[INFO] のように角括弧で囲まれている">レベル [INFO]</button>
+            <button type="button" class="log-format-part" data-insert="\[(?&lt;thread&gt;[^\]]*)\]"
+                    title="[main] のように角括弧で囲まれている">スレッド [main]</button>
+            <button type="button" class="log-format-part" data-insert="\((?&lt;thread&gt;[^)]*)\)"
+                    title="(main) のように丸括弧で囲まれている">スレッド (main)</button>
+            <button type="button" class="log-format-part"
+                    data-insert="\[(?&lt;thread&gt;(?:[^\[\]]|\[[^\]]*\])*)\]"
+                    title="角括弧の中にもう 1 組の角括弧があるとき。入れ子なしの行にも使える">スレッド [pool-1[worker-3]]</button>
+            <button type="button" class="log-format-part" data-insert="(?&lt;logger&gt;\S+)"
+                    title="空白を含まないひとかたまり。括弧で囲まれていないとき">ロガー com.example.Hoge</button>
+            <button type="button" class="log-format-part" data-insert="\[(?&lt;logger&gt;[^\]]*)\]"
+                    title="角括弧で囲まれているとき">ロガー [com.example.Hoge]</button>
+            <button type="button" class="log-format-part" data-insert="(?&lt;message&gt;.*)$"
+                    title="行の終わりまで全部">メッセージ（行末まで）</button>
+          </div>
+
+          <p class="log-format-parts-label">つなぎ・そのほか</p>
+          <div class="log-format-parts">
+            <button type="button" class="log-format-part" data-insert="^"
+                    title="行の先頭">行の先頭 ^</button>
+            <button type="button" class="log-format-part" data-insert="$"
+                    title="行の終わり">行の終わり $</button>
+            <button type="button" class="log-format-part" data-insert=" +"
+                    title="桁揃えで空白の数が変わるログに"><code> +</code> 空白 1 個以上</button>
+            <button type="button" class="log-format-part" data-insert="\d+"
+                    title="数字 1 桁以上"><code>\d+</code> 数字</button>
+            <button type="button" class="log-format-part" data-insert="\S+"
+                    title="空白を含まないひとかたまり"><code>\S+</code> 空白以外</button>
+            <button type="button" class="log-format-part" data-insert=".*"
+                    title="0 文字以上の何か"><code>.*</code> なんでも</button>
+          </div>
+
+          <p>
+            <strong>行によって出たり出なかったりする部分があるとき</strong>は、そこを
+            <code>(?:</code> と <code>)?</code> ではさみます。たとえば
+            <code>---</code> が付く行と付かない行が混ざるなら <code>(?:--- )?</code> です。
+          </p>
+          <p>
+            <strong>スレッド名が <code>[pool-1[worker-3]]</code> のように、角括弧の中に
+            もう 1 組入っているとき</strong>は、「スレッド <code>[main]</code>」ではなく
+            「スレッド <code>[pool-1[worker-3]]</code>」のボタンを選んでください。
+            前者は最初の <code>]</code> で切れてしまい、行に一致しなくなります。
+            後者は <code>[main]</code> のような普通の行にもそのまま使えます。
+            ロガーが同じ形のときは、このボタンを押してから <code>thread</code> の部分を
+            <code>logger</code> に書き換えてください。
+          </p>
+          <p>
+            ログの中の <code>.</code> <code>[</code> <code>]</code> <code>(</code>
+            <code>)</code> <code>+</code> <code>*</code> <code>?</code> <code>|</code>
+            <code>$</code> <code>^</code> <code>\</code> は、<strong>そのままだと別の意味に
+            なります</strong>。文字として書きたいときは前に <code>\</code> を足してください
+            （<code>.</code> なら <code>\.</code>）。
+          </p>
+
+          <h4>日時書式（日時欄）</h4>
+          <p>
+            <code>ts</code> で取り出した文字列を、どう読むかの指定です。
+            正規表現ではなく <strong>Java の日時パターン</strong>を書きます。
+            上の<strong>日時の部品を選ぶと、この欄も一緒に入ります</strong>。
+            正規表現を先に組み立てたいときは、空のままで構いません（その間は
+            <strong>この行で試す</strong>が、取り出せた文字列をそのまま見せます）。
+          </p>
+          <p class="log-format-parts-label">クリックすると日時書式の欄に入ります</p>
+          <div class="log-format-parts">
+            <button type="button" class="log-format-ts-part"
+                    data-timestamp="yyyy-MM-dd HH:mm:ss.SSS">
+              <code>yyyy-MM-dd HH:mm:ss.SSS</code>
+              <span class="log-format-part-sample">2026-06-15 00:19:11.705</span>
+            </button>
+            <button type="button" class="log-format-ts-part"
+                    data-timestamp="yyyy/MM/dd HH:mm:ss.SSS">
+              <code>yyyy/MM/dd HH:mm:ss.SSS</code>
+              <span class="log-format-part-sample">2026/06/15 00:19:11.705</span>
+            </button>
+            <button type="button" class="log-format-ts-part"
+                    data-timestamp="yyyy-MM-dd&#39;T&#39;HH:mm:ss.SSS">
+              <code>yyyy-MM-dd'T'HH:mm:ss.SSS</code>
+              <span class="log-format-part-sample">2026-06-15T00:19:11.705</span>
+            </button>
+            <button type="button" class="log-format-ts-part"
+                    data-timestamp="yyyy-MM-dd HH:mm:ss">
+              <code>yyyy-MM-dd HH:mm:ss</code>
+              <span class="log-format-part-sample">2026-06-15 00:19:11</span>
+            </button>
+            <button type="button" class="log-format-ts-part"
+                    data-timestamp="yyyy/MM/dd HH:mm:ss">
+              <code>yyyy/MM/dd HH:mm:ss</code>
+              <span class="log-format-part-sample">2026/06/15 00:19:11</span>
+            </button>
+            <button type="button" class="log-format-ts-part"
+                    data-timestamp="dd/MMM/yyyy:HH:mm:ss">
+              <code>dd/MMM/yyyy:HH:mm:ss</code>
+              <span class="log-format-part-sample">15/Jun/2026:00:19:11（月名は英語）</span>
+            </button>
+            <button type="button" class="log-format-ts-part"
+                    data-timestamp="yyyyMMdd HHmmss">
+              <code>yyyyMMdd HHmmss</code>
+              <span class="log-format-part-sample">20260615 001911</span>
+            </button>
+            <button type="button" class="log-format-ts-part"
+                    data-timestamp="yyyy/M/d H:m:s">
+              <code>yyyy/M/d H:m:s</code>
+              <span class="log-format-part-sample">桁を揃えない書き方（2026/6/15 0:19:11）</span>
+            </button>
+          </div>
+          <p>
+            <code>ts</code> が取り出した文字列と、この日時パターンの形は
+            <strong>ぴったり合わせてください</strong>。区切りが違うだけでも読めません。
+            日付を含まない書式（時刻だけ）は、日をまたいだときに並べられないため使えません。
+            時刻はログに書かれたままの値として扱い、タイムゾーンの変換はしません。
+          </p>
+
+          <h4>うまくいかないとき</h4>
+          <p>
+            読みたいログを 1 行そのまま「試すログの行」に貼り、<strong>この行で試す</strong>を
+            押してください。各項目に何が取れたか、当たらないときはどこを直せばよいかが出ます
+            （登録はされません）。よくある原因は次の 2 つです。
+          </p>
+          <ul>
+            <li>
+              <strong>行の全部を書いていない。</strong>
+              <code>^</code> から <code>$</code> まで、行の最初から最後までが当たる形にします。
+              途中で終わっていると一致しません。
+            </li>
+            <li>
+              <strong>空白の数が違う。</strong>
+              レベルを右詰めにするログ（<code>INFO&nbsp;&nbsp;</code> のように後ろが空く）では、
+              空白 1 個ではなく<strong>空白 1 個以上</strong>（<code> +</code>）を使います。
+            </li>
+          </ul>
+
+          <h4>読めない形式</h4>
+          <ul>
+            <li>
+              <strong>1 エントリが 2 行以上になる形式。</strong>
+              一致しなかった行は、直前のエントリの続き（スタックトレース）として扱います。
+            </li>
+            <li>
+              <strong><code>(a+)+</code> のように繰り返しを入れ子にした書き方。</strong>
+              照合が急激に重くなるため、行の長さに見合わない照合は打ち切り、取り込みを
+              失敗させます（画面が固まったままにはなりません）。
+            </li>
+            <li>
+              <strong><code>(?x)</code>（空白を無視する書き方）。</strong>
+              コメントの中に書いたグループを、アプリ側が「ある」と数えてしまいます。
+            </li>
+          </ul>
+
+          <h4>登録したあと</h4>
+          <p>
+            書式のプルダウンから選んで <strong>読み込み</strong> を押すと、その書式で取り込みます
+            （自動判定に任せることもできます）。書式を直すとインデックスは作り直されます。
+            id を変えなくても、正規表現や日時書式を変えれば作り直しの対象です。
+          </p>
+        </div>
+      </details>
+
       <div class="saved-searches-actions">
         <button type="submit">閉じる</button>
       </div>

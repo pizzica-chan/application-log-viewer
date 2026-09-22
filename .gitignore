@@ -7,6 +7,12 @@ aplv-saved-searches.json.tmp
 aplv-java/aplv-saved-searches.json
 aplv-java/aplv-saved-searches.json.tmp
 
+# User-defined log formats (tool home / repo root; APLV_HOME overrides)
+aplv-log-formats.txt
+aplv-log-formats.txt.tmp
+aplv-java/aplv-log-formats.txt
+aplv-java/aplv-log-formats.txt.tmp
+
 # Legacy index under log directories (no longer created)
 .aplv/
 

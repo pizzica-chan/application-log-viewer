@@ -1120,3 +1120,219 @@ dialog pre {
     background: rgba(246, 248, 250, 0.82);
   }
 }
+
+/* ---- ログ書式の管理ダイアログ ---- */
+
+.log-formats-form h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.log-formats-form h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+}
+
+#log-formats-dialog {
+  max-width: 44rem;
+  /* ガイドを開くと縦に伸びるので、画面からはみ出さない範囲でスクロールさせる */
+  max-height: 92vh;
+}
+
+.log-format-note {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+/* 一覧の各行は保存した検索条件と同じ見た目を使うが、ボタンが 2 つ並ぶ */
+#log-format-list .saved-search-item button {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8125rem;
+  background: var(--panel);
+  color: var(--text);
+  flex: 0 0 auto;
+}
+
+.saved-search-meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.log-format-editor {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.log-format-editor label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.log-format-editor input,
+.log-format-editor textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.2rem;
+  font-family: inherit;
+}
+
+.log-format-editor textarea {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.8125rem;
+  resize: vertical;
+}
+
+.log-format-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.log-format-result {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  word-break: break-all;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.log-format-result.is-ok {
+  border-color: var(--ok, #2da44e);
+}
+
+.log-format-result.is-error {
+  border-color: var(--err);
+}
+
+.log-format-guide {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.log-format-guide summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.log-format-guide-body {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  max-height: 45vh;
+  overflow: auto;
+  margin-top: 0.5rem;
+}
+
+.log-format-guide-body h4 {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.8125rem;
+}
+
+.log-format-guide-body h4:first-child {
+  margin-top: 0;
+}
+
+.log-format-guide-body p,
+.log-format-guide-body ul {
+  margin: 0 0 0.5rem;
+}
+
+.log-format-guide-body ul {
+  padding-left: 1.2rem;
+}
+
+.log-format-guide-body code {
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.log-format-guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.6rem;
+}
+
+.log-format-guide-table th,
+.log-format-guide-table td {
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.45rem;
+  text-align: left;
+  vertical-align: top;
+  font-weight: normal;
+  /* 一覧の表は nowrap だが、ここは長い正規表現を折り返して見せる */
+  white-space: normal;
+  word-break: break-all;
+}
+
+.log-format-guide-table th {
+  /* 見出しは折り返さず、中身なりの幅に縮める（残りを本文の列が使う） */
+  white-space: nowrap;
+  width: 1%;
+  color: var(--muted);
+}
+
+.log-format-parts-label {
+  margin: 0.7rem 0 0.3rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.log-format-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.3rem;
+}
+
+/* 部品はクリックで正規表現欄へ入る。見た目は chip に寄せる */
+.log-format-part {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.log-format-part:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 日時書式のボタン。左に書式、右に見た目の例を並べる */
+.log-format-ts-part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.log-format-ts-part:hover {
+  border-color: var(--accent);
+}
+
+.log-format-ts-part code {
+  font-size: 0.75rem;
+}
+
+.log-format-part-sample {
+  color: var(--muted);
+}

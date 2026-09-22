@@ -1,0 +1,23 @@
+# aplv の利用者定義ログ書式（例）
+#
+# このファイルをツールホーム直下へ aplv-log-formats.txt として置くと、
+# 書式のプルダウンに並びます（APLV_HOME。未設定時はリポジトリ直下）。
+# 画面の「書式の管理」からも同じファイルを編集できます。
+#
+# 行頭の # だけがコメントです。値の途中の # はただの文字として扱います。
+#
+# 必須は pattern と timestamp。name を省くと id をそのまま名前に使います。
+# 取り出せる項目は名前付きグループで、ts だけが必須です
+# （level / thread / logger / message は任意。無ければ空欄になります）。
+
+# 2026/06/15 00:19:11.705 INFO (main) com.example.Hoge : 処理を開始します
+[my-app]
+name = 自社アプリ形式
+pattern = ^(?<ts>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?<level>\w+) \((?<thread>[^)]*)\) (?<logger>\S+) : (?<message>.*)$
+timestamp = yyyy/MM/dd HH:mm:ss.SSS
+
+# 15/Jun/2026:00:19:11 [warn] ディスク残量が少なくなっています
+[syslog-ish]
+name = 日付が英語月名の形式
+pattern = ^(?<ts>\d{2}/[A-Za-z]{3}/\d{4}:\d{2}:\d{2}:\d{2}) \[(?<level>[^\]]*)\] (?<message>.*)$
+timestamp = dd/MMM/yyyy:HH:mm:ss

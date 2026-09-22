@@ -64,7 +64,7 @@ class SessionTraceTest {
             int maxMinutes) throws Exception {
         Files.createDirectories(root);
         try (Connection conn = LogIndex.openOrCreate(root)) {
-            LogIndex.buildIndex(conn, logs, null, fts, LogFormat.DEFAULT);
+            LogIndex.buildIndex(conn, logs, null, fts, LogFormatSpec.DEFAULT);
             return trace(id, maxMinutes).run(conn);
         }
     }
@@ -177,7 +177,7 @@ class SessionTraceTest {
             String contains, String excludes) throws Exception {
         Files.createDirectories(root);
         try (Connection conn = LogIndex.openOrCreate(root)) {
-            LogIndex.buildIndex(conn, logs, null, false, LogFormat.DEFAULT);
+            LogIndex.buildIndex(conn, logs, null, false, LogFormatSpec.DEFAULT);
             return trace(id, 10)
                     .withRequestFilter(QueryFilter.compileRegex(contains),
                             QueryFilter.compileRegex(excludes))
@@ -229,7 +229,7 @@ class SessionTraceTest {
         Path log = writeLog(tmp, "app.log", content);
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             SessionTrace.Result r = trace(SID, 10)
                     .withRequestFilter(null, QueryFilter.compileRegex("除外したい語"))
                     .run(conn);
@@ -261,7 +261,7 @@ class SessionTraceTest {
         Path log = writeLog(tmp, "app.log", sb.toString());
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             SessionTrace.Result r = trace(SID, 10)
                     .withRequestFilter(null, QueryFilter.compileRegex("リクエスト開始"))
                     .run(conn);
@@ -386,7 +386,7 @@ class SessionTraceTest {
         Path log = writeLog(root, "app.log", content);
         try (Connection conn = LogIndex.openOrCreate(root)) {
             LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             return SessionTrace.byTimeWindow(id, windowSeconds)
                     .withRequestFilter(QueryFilter.compileRegex(contains),
                             QueryFilter.compileRegex(excludes))
@@ -493,7 +493,7 @@ class SessionTraceTest {
                 line("10:00:10.500", "exec-1", "別インスタンスの同名スレッド"));
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, java.util.Arrays.asList(a, b), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             SessionTrace.Result r = SessionTrace.byTimeWindow(SID, 5).run(conn);
             assertEquals(1, r.requests.size());
             assertEquals(2, r.requests.get(0).entries.size());
@@ -659,7 +659,7 @@ class SessionTraceTest {
         Path log = writeLog(tmp, "app.log", content);
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             SessionTrace.Result r = new SessionTrace(id, QueryFilter.compileRegex(START),
                     QueryFilter.compileRegex(END), 10).run(conn);
             assertEquals(1, r.anchorTotal);
@@ -683,7 +683,7 @@ class SessionTraceTest {
         Path log = writeLog(tmp, "app.log", content);
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             EntryRow big = LogIndex.findEntry(conn, PathUtil.normalizePath(log), 2);
             assertTrue(big.endByteOffset - big.byteOffset > 65536,
                     "窓より大きいエントリであること");
@@ -705,7 +705,7 @@ class SessionTraceTest {
         Path log = writeLog(tmp, "app.log", content);
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             Files.delete(log); // 索引を作ったあとでログが消える
             assertThrows(java.sql.SQLException.class, () -> trace(SID, 10).run(conn),
                     "起点探しで読めなければエラー");
@@ -827,7 +827,7 @@ class SessionTraceTest {
         Path log = writeLog(tmp, "app.log", content);
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             Request r = t.run(conn).requests.get(0);
             assertEquals(EndReason.STANDALONE, r.endReason);
         }
@@ -1012,7 +1012,7 @@ class SessionTraceTest {
                         + line("10:00:00.010", "exec-1", "id=" + SID));
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
-                    LogFormat.DEFAULT);
+                    LogFormatSpec.DEFAULT);
             for (String sql : new String[] {SessionTrace.BACKWARD_SQL, SessionTrace.FORWARD_SQL}) {
                 StringBuilder plan = new StringBuilder();
                 try (PreparedStatement ps = conn.prepareStatement("EXPLAIN QUERY PLAN " + sql)) {
