@@ -36,7 +36,7 @@ import com.example.aplv.LogIndex.EntryRow;
  * <p>範囲の決め方（{@link Mode#BOUNDARY} の場合。起点ごと）:
  * <ol>
  *   <li>起点から同じスレッドを遡り、最も近い「はじまり」を探す。途中で別の「おわり」に
- *       当たったら、起点はそのリクエストの後ろにあるので探索をやめる</li>
+ *       一致したら、起点はそのリクエストの後ろにあるので探索をやめる</li>
  *   <li>起点から進み、「おわり」で閉じる。おわりより先に次の「はじまり」が来たら、その直前で閉じる</li>
  *   <li>はじまりが見つからなくても、次のはじまりより先におわりが来れば、はじまりの行が
  *       欠けた（ローテートで前のファイルに残った等）リクエストとして扱う</li>
@@ -55,7 +55,7 @@ import com.example.aplv.LogIndex.EntryRow;
  * <p>範囲の探索は {@code idx_entries_ts} を起点から時刻順に辿り、境界が見つかったところで
  * 打ち切る。専用の索引（file_id, thread, …）は足していない。
  * 以下の実測はすべて {@link Mode#BOUNDARY} のもので、{@link Mode#WINDOW} は測っていない
- * （窓の秒数とログの密度で読む行数が変わるため、同じ数字は当てはまらない）。
+ * （窓の秒数とログの密度で読む行数が変わるため、同じ数値の目安にはならない）。
  * 実測（100 万行・1 ファイル・50 スレッド・108 MB、Windows 11 / JDK 8、各 5 回の中央値）:
  * <table summary="セッション追跡の実測">
  *   <tr><th>起点</th><th>--fts あり</th><th>--fts なし</th></tr>
@@ -67,12 +67,12 @@ import com.example.aplv.LogIndex.EntryRow;
  * 変更後の 11ms / 58ms との差は測定のばらつきの範囲。
  * リクエスト単位の絞り込み（{@link #withRequestFilter}）の追加後に、299 件の条件で測り直した
  * （同じ条件・5 回の中央値）: 絞り込みなし 51ms、含む・全件一致 53ms、除く・299 件すべてを
- * 落とす 70ms。絞り込みなしが上表の 52ms と 1ms 違うのは測定のばらつきの範囲で、差は無いとみる。
+ * 落とす 70ms。絞り込みなしが上表の 52ms と 1ms 違うのは測定のばらつきの範囲で、差はないとみる。
  * 絞り込みは結論が出た時点で読むのをやめるので、上の値にほとんど上乗せされない。
  * --fts なしでは起点の数によらずほぼ一定で、起点探し（全件のバイト範囲を読む）が大半を占める。
  * ありふれた文字列（{@code sessionId=}、起点 133,347 件）を指定しても、起点を溜めずに流すので
  * --fts ありで 630ms、--fts なしで 860ms、ヒープ 256MB で完走した（高速化前は --fts ありで
- * 1,008ms、除外を付けて {@link #MAX_EXAMINED_REQUESTS} に当たる場合で 1,360ms）。
+ * 1,008ms、除外を付けて {@link #MAX_EXAMINED_REQUESTS} の上限に達した場合で 1,360ms）。
  * 範囲探索のクエリで files と JOIN していたときは、並べ替えのために時間窓の全行を集めていたため、
  * 上の 2 行が --fts ありでも 1,326ms / 11,743ms かかっていた（{@link LogIndex#selectEntriesOnly}）。
  */
@@ -249,7 +249,7 @@ public final class SessionTrace {
         int filterCheckedRows;
         /** 「含む」に一致した行があったか。 */
         boolean containsHit;
-        /** 「除く」に一致した行があったか（当たったら以後は覆らない）。 */
+        /** 「除く」に一致した行があったか（該当したら以後は覆らない）。 */
         boolean excludeHit;
         /** 時系列（ファイル内の行順）に並んだエントリ。 */
         public final List<EntryRow> entries = new ArrayList<>();
@@ -392,7 +392,7 @@ public final class SessionTrace {
             return true;
         }
         if (req.excludeHit) {
-            return false; // 一度でも除外に当たったら、行が増えても覆らない
+            return false; // 一度でも除外条件に該当したら、行が増えても覆らない
         }
         if (excludesRe == null && req.containsHit) {
             return true; // 除外を見る必要が無く、既に含む条件を満たしている

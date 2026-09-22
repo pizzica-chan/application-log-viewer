@@ -61,19 +61,19 @@ class LogIndexTest {
      * 利用者定義の書式で<strong>日時だけ読めない行</strong>を、本文に混ぜず読み飛ばしとして
      * 数えること。
      *
-     * <p>正規表現が当たったのに日時を読めない行は、直すべき書式がある行だ。継続行
+     * <p>正規表現に一致したのに日時を読めない行は、直すべき書式がある行だ。継続行
      * （スタックトレース）と同じ扱いで直前のエントリの本文へ足してしまうと、読み飛ばし
      * 件数は 0 のまま、日時書式の間違いが画面のどこにも出ない。
      *
-     * <p>正規表現にそもそも当たらない行は、今までどおり本文として扱う。
+     * <p>正規表現にそもそも一致しない行は、今までどおり本文として扱う。
      */
     @Test
     void countsLinesWhoseTimestampIsUnreadable(@TempDir Path tmp) throws Exception {
         Path log = writeLog(tmp, "app.log",
                 "2026/06/15 00:00:01.000 INFO (main) com.example.Foo : ok\n"
-                        // 日時だけ壊れている（月が 13）。正規表現には当たる
+                        // 日時だけ壊れている（月が 13）。正規表現には一致する
                         + "2026/13/15 00:00:02.000 INFO (main) com.example.Foo : broken\n"
-                        // 正規表現にも当たらない行は継続行として本文に入る
+                        // 正規表現にも一致しない行は継続行として本文に入る
                         + "\tat com.example.Foo.run(Foo.java:10)\n");
         CustomLogFormat custom = LogFormatStore.create("my-app", "自社",
                 "^(?<ts>\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}) (?<level>\\w+) "

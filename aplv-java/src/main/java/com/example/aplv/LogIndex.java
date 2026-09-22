@@ -794,7 +794,7 @@ public final class LogIndex {
         // 組み込み書式のときは custom == null で、従来と同じ経路をそのまま通る。
         final LogFormat builtin = format.builtin();
         final CustomLogFormat custom = format.custom();
-        // 1 行ごとに確保しないよう、正規表現が当たったかの受け皿は使い回す
+        // 1 行ごとに確保しないよう、正規表現に一致したかの受け皿は使い回す
         // （このメソッドはファイルごとに 1 本のスレッドで走る）。
         final boolean[] matchedShape = new boolean[1];
         try (InputStream raw = Files.newInputStream(path);
@@ -811,7 +811,7 @@ public final class LogIndex {
                     continue;
                 }
                 LogParser.ParsedLine parsed;
-                // 利用者定義の書式で「正規表現は当たったのに日時を読めなかった」行。
+                // 利用者定義の書式で「正規表現は一致したのに日時を読めなかった」行。
                 // 直すべき書式がある行なので、継続行（本文）と混ぜずに数える。混ぜると
                 // 日時書式の間違いが画面のどこにも出ない。組み込み書式の扱いは変えない
                 // ―― あちらは以前から、形だけ合っている行も本文へ入れている。

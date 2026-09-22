@@ -207,7 +207,7 @@ class SessionTraceTest {
             assertFalse("http-nio-8080-exec-2".equals(r.thread) && r.entries.size() == 5);
         }
 
-        // 両方指定すると、含む条件を満たしても除外に当たれば落ちる
+        // 両方指定すると、含む条件を満たしても除外条件に該当すれば落ちる
         SessionTrace.Result both =
                 runFiltered(tmp.resolve("c"), logs, "リクエスト開始", "PaymentException");
         // はじまりの行を持つのは 5 件（「はじまり不明」と「単独の行」には無い）。そこから 1 件除く

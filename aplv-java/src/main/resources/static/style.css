@@ -130,7 +130,7 @@ header h1 {
   min-width: 0;
 }
 
-/* 書式セレクト。input と同じ見た目に揃える（select には input の指定が当たらない） */
+/* 書式セレクト。input と同じ見た目に揃える（select には input 用のスタイルが適用されない） */
 #log-format {
   flex: 0 0 auto;
   padding: 0.35rem 0.5rem;

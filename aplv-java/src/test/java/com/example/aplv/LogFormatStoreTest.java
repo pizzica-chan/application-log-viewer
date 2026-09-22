@@ -496,14 +496,14 @@ class LogFormatStoreTest {
      * 広い正規表現の利用者定義は、組み込み書式のログでも自動判定に勝つこと。
      *
      * <p>判定は<strong>一致した行数</strong>で決め、同数のときだけ組み込みを採る。
-     * つまり組み込みより多くの行に当たる書式を登録すると、組み込み書式のログを
+     * つまり組み込みより多くの行に一致する書式を登録すると、組み込み書式のログを
      * 読むときもそちらが選ばれる。これは規則どおりの動きなので、画面は
      * <strong>「自動判定（名前・利用者定義）」と出して気づけるようにしている</strong>。
      * 意図しないなら書式を明示指定するか、その書式を消す。
      */
     @Test
     void looseCustomFormatCanWinAutoDetect(@TempDir Path tmp) throws IOException {
-        // 日時さえ取れれば何でも通る書式。継続行にも当たるので組み込みより多く当たる
+        // 日時さえ取れれば何でも通る書式。継続行にも一致するので組み込みより多く一致する
         String text = "[loose]\n"
                 + "name = 何でも通る\n"
                 + "pattern = ^(?<ts>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}).*$\n"
@@ -515,7 +515,7 @@ class LogFormatStoreTest {
                 + "2026-06-15 00:19:11.706 これはヘッダの形ではない\n")
                 .getBytes(StandardCharsets.UTF_8));
         LogFormatSpec spec = LogFormatSpec.detect(Collections.singletonList(log), customs);
-        assertTrue(spec.isCustom(), "当たった行数が多いほうが選ばれる");
+        assertTrue(spec.isCustom(), "一致した行数が多いほうが選ばれる");
         assertEquals("loose", spec.id());
     }
 

@@ -313,7 +313,7 @@
       <div class="detail-actions">
         <button type="button" id="detail-search-around-1m" class="detail-search-around-btn">前後1分間のログを検索</button>
         <button type="button" id="detail-search-around-5m" class="detail-search-around-btn">前後5分間のログを検索</button>
-        <button type="button" id="detail-filter-same-context" class="detail-search-around-btn">同一ログファイル・同一スレッドで絞込み</button>
+        <button type="button" id="detail-filter-same-context" class="detail-search-around-btn">同一ログファイル・同一スレッドで絞り込み</button>
         <button type="submit">閉じる</button>
       </div>
     </form>
@@ -483,7 +483,7 @@
           <h4>考え方</h4>
           <p>
             読みたいログの 1 行をそのまま書き写し、<strong>行ごとに変わるところだけを
-            「部品」に置き換える</strong>。これだけです。置き換えた部品に名前を付けると、
+            「部品」に置き換えてください</strong>。これだけです。置き換えた部品に名前を付けると、
             その中身が一覧の列になります。
           </p>
           <table class="log-format-guide-table">
@@ -496,7 +496,7 @@
               <td><code>^2026/06/15 00:19:11.705 INFO (main) com.example.Hoge : 開始しました$</code></td>
             </tr>
             <tr>
-              <th>置き換える</th>
+              <th>置き換え例</th>
               <td><code>^(?&lt;ts&gt;\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?&lt;level&gt;\w+) \((?&lt;thread&gt;[^)]*)\) (?&lt;logger&gt;\S+) : (?&lt;message&gt;.*)$</code></td>
             </tr>
           </table>
@@ -659,13 +659,13 @@
           <h4>うまくいかないとき</h4>
           <p>
             読みたいログを 1 行そのまま「試すログの行」に貼り、<strong>この行で試す</strong>を
-            押してください。各項目に何が取れたか、当たらないときはどこを直せばよいかが出ます
+            押してください。各項目に何が取れたか、一致しないときはどこを直せばよいかが出ます
             （登録はされません）。よくある原因は次の 3 つです。
           </p>
           <ul>
             <li>
               <strong>行の全部を書いていない。</strong>
-              <code>^</code> から <code>$</code> まで、行の最初から最後までが当たる形にします。
+              <code>^</code> から <code>$</code> まで、行の最初から最後までが一致する形にします。
               途中で終わっていると一致しません。
             </li>
             <li>
