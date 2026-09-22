@@ -1134,7 +1134,8 @@ dialog pre {
 }
 
 #log-formats-dialog {
-  max-width: 44rem;
+  width: min(56rem, 95vw);
+  max-width: min(56rem, 95vw);
   /* ガイドを開くと縦に伸びるので、画面からはみ出さない範囲でスクロールさせる */
   max-height: 92vh;
 }
@@ -1245,13 +1246,42 @@ dialog pre {
   margin-top: 0.5rem;
 }
 
-.log-format-guide-body h4 {
-  margin: 0.9rem 0 0.35rem;
-  font-size: 0.8125rem;
+/* 大セクション（考え方・部品・日時書式…） */
+.log-format-guide-section {
+  padding-top: 0.85rem;
+  margin-top: 0.85rem;
+  border-top: 1px solid var(--border);
 }
 
-.log-format-guide-body h4:first-child {
+.log-format-guide-section:first-child {
+  padding-top: 0;
   margin-top: 0;
+  border-top: none;
+}
+
+.log-format-guide-body h4 {
+  margin: 0 0 0.45rem;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+/* 部品グループなど、セクション内の小見出し */
+.log-format-guide-subhead {
+  margin: 0.65rem 0 0.3rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.log-format-parts-hint {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .log-format-guide-body p,
@@ -1261,6 +1291,37 @@ dialog pre {
 
 .log-format-guide-body ul {
   padding-left: 1.2rem;
+}
+
+.log-format-guide-body ul li {
+  margin-bottom: 0.4rem;
+}
+
+.log-format-guide-body ul li:last-child {
+  margin-bottom: 0;
+}
+
+.log-format-li-title {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.12rem;
+}
+
+.log-format-callout {
+  margin: 0.55rem 0 0.65rem;
+  padding: 0.45rem 0.55rem;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--panel) 82%, var(--accent) 18%);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.log-format-guide-body strong {
+  font-weight: 600;
+}
+
+.log-format-ui {
+  font-weight: 600;
 }
 
 .log-format-guide-body code {
@@ -1293,10 +1354,12 @@ dialog pre {
   color: var(--muted);
 }
 
+/* 旧 class 名（互換）。新規は log-format-guide-subhead を使う */
 .log-format-parts-label {
-  margin: 0.7rem 0 0.3rem;
-  font-size: 0.75rem;
-  color: var(--muted);
+  margin: 0.65rem 0 0.3rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .log-format-parts {

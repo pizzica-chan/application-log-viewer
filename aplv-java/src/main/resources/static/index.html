@@ -433,8 +433,11 @@
         保存先: <code id="log-format-file">読み込み中...</code>
       </p>
       <p class="log-format-note">
-        組み込み書式で読めないログを、正規表現で読めるようにします。ここで登録した書式は
-        書式のプルダウンに並び、自動判定の候補にもなります。
+        <strong>組み込みの書式のほうが読み込みは速いです。</strong>
+        logback や spring-boot など、組み込みで問題なく読めるログなら、書式のプルダウンから
+        組み込みを選んでください。この画面は、組み込みだけでは読めない並びを
+        正規表現で定義するときに使います。登録した書式はプルダウンに並び、
+        自動判定の候補にもなります。
       </p>
 
       <ul id="log-format-list" class="saved-search-list"></ul>
@@ -480,11 +483,13 @@
       <details class="log-format-guide">
         <summary>書き方ガイド</summary>
         <div class="log-format-guide-body">
+          <section class="log-format-guide-section">
           <h4>考え方</h4>
           <p>
-            読みたいログの 1 行をそのまま書き写し、<strong>行ごとに変わるところだけを
-            「部品」に置き換えてください</strong>。これだけです。置き換えた部品に名前を付けると、
-            その中身が一覧の列になります。
+            まず、読みたいログの 1 行を正規表現の欄にそのまま書き写します。
+            次に、行によって変わる部分（日時やレベルなど）だけを、下の「部品」ボタンが
+            挿入する正規表現に置き換えます（その部分の文字列を消し、パターンを書くイメージです）。
+            部品には <code>ts</code> などの名前が付いており、行に一致したときに取り出した値が一覧の列になります。
           </p>
           <table class="log-format-guide-table">
             <tr>
@@ -500,18 +505,24 @@
               <td><code>^(?&lt;ts&gt;\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?&lt;level&gt;\w+) \((?&lt;thread&gt;[^)]*)\) (?&lt;logger&gt;\S+) : (?&lt;message&gt;.*)$</code></td>
             </tr>
           </table>
-          <p>
-            名前は 5 つ決まっていて、<strong><code>ts</code>（日時）だけが必須</strong>です。
+          </section>
+
+          <section class="log-format-guide-section">
+          <h4>取り出す項目（5 つ）</h4>
+          <p class="log-format-callout">
+            必須は <code>ts</code>（日時）だけです。
             <code>level</code>・<code>thread</code>・<code>logger</code>・<code>message</code> は
             必要なものだけ付ければよく、付けなかった列は空欄になります。
           </p>
+          </section>
 
-          <h4>部品</h4>
+          <section class="log-format-guide-section">
+          <h4>部品（正規表現のひな形）</h4>
           <p>
-            クリックすると<strong>正規表現の欄に差し込みます</strong>（カーソルの位置に入ります）。
+            クリックすると正規表現の欄に差し込みます（カーソルの位置に入ります）。
           </p>
 
-          <p class="log-format-parts-label">日時（どれか 1 つを選ぶ）</p>
+          <p class="log-format-guide-subhead">日時（どれか 1 つを選ぶ）</p>
           <div class="log-format-parts">
             <button type="button" class="log-format-part"
                     data-insert="(?&lt;ts&gt;\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})"
@@ -539,7 +550,7 @@
                     title="15/Jun/2026:00:19:11（月名が英語）">15/Jun/2026:00:19:11</button>
           </div>
 
-          <p class="log-format-parts-label">レベル・スレッド・ロガー・メッセージ</p>
+          <p class="log-format-guide-subhead">レベル・スレッド・ロガー・メッセージ</p>
           <div class="log-format-parts">
             <button type="button" class="log-format-part" data-insert="(?&lt;level&gt;\w+)"
                     title="INFO / ERROR のような 1 語。括弧で囲まれていないとき">レベル INFO</button>
@@ -560,7 +571,7 @@
                     title="行の終わりまで全部">メッセージ（行末まで）</button>
           </div>
 
-          <p class="log-format-parts-label">つなぎ・そのほか</p>
+          <p class="log-format-guide-subhead">つなぎ・そのほか</p>
           <div class="log-format-parts">
             <button type="button" class="log-format-part" data-insert="^"
                     title="行の先頭">行の先頭 ^</button>
@@ -577,36 +588,36 @@
           </div>
 
           <p>
-            <strong>行によって出たり出なかったりする部分があるとき</strong>は、そこを
+            行によって出たり出なかったりする部分があるときは、そこを
             <code>(?:</code> と <code>)?</code> ではさみます。たとえば
             <code>---</code> が付く行と付かない行が混ざるなら <code>(?:--- )?</code> です。
           </p>
-          <p>
-            <strong>スレッド名が <code>[pool-1[worker-3]]</code> のように、角括弧の中に
-            もう 1 組入っているとき</strong>は、「スレッド <code>[main]</code>」ではなく
-            「スレッド <code>[pool-1[worker-3]]</code>」のボタンを選んでください。
+          <p class="log-format-callout">
+            スレッド名が <code>[pool-1[worker-3]]</code> のように、角括弧の中にもう 1 組入っているときは、
+            「スレッド <code>[main]</code>」ではなく「スレッド <code>[pool-1[worker-3]]</code>」のボタンを選んでください。
             前者は最初の <code>]</code> で切れてしまい、行に一致しなくなります。
             後者は <code>[main]</code> のような普通の行にもそのまま使えます。
-            ロガーが同じ形のときは、このボタンを押してから <code>thread</code> の部分を
-            <code>logger</code> に書き換えてください。
+            ロガーが同じ形のときは、このボタンを押してから <code>thread</code> を <code>logger</code> に書き換えてください。
           </p>
           <p>
             ログの中の <code>.</code> <code>[</code> <code>]</code> <code>(</code>
             <code>)</code> <code>+</code> <code>*</code> <code>?</code> <code>|</code>
-            <code>$</code> <code>^</code> <code>\</code> は、<strong>そのままだと別の意味に
-            なります</strong>。文字として書きたいときは前に <code>\</code> を足してください
+            <code>$</code> <code>^</code> <code>\</code> は、そのままだと別の意味になります。
+            文字として書きたいときは前に <code>\</code> を足してください
             （<code>.</code> なら <code>\.</code>）。
           </p>
+          </section>
 
+          <section class="log-format-guide-section">
           <h4>日時書式（日時欄）</h4>
           <p>
             <code>ts</code> で取り出した文字列を、どう読むかの指定です。
-            正規表現ではなく <strong>Java の日時パターン</strong>を書きます。
-            上の<strong>日時の部品を選ぶと、この欄も一緒に入ります</strong>。
+            正規表現ではなく Java の日時パターンを書きます。
+            上の日時の部品を選ぶと、この欄も一緒に入ります。
             正規表現を先に組み立てたいときは、空のままで構いません（その間は
-            <strong>この行で試す</strong>が、取り出せた文字列をそのまま見せます）。
+            <span class="log-format-ui">この行で試す</span> が、取り出せた文字列をそのまま見せます）。
           </p>
-          <p class="log-format-parts-label">クリックすると日時書式の欄に入ります</p>
+          <p class="log-format-parts-hint">クリックすると日時書式の欄に入ります</p>
           <div class="log-format-parts">
             <button type="button" class="log-format-ts-part"
                     data-timestamp="yyyy-MM-dd HH:mm:ss.SSS">
@@ -649,63 +660,71 @@
               <span class="log-format-part-sample">桁を揃えない書き方（2026/6/15 0:19:11）</span>
             </button>
           </div>
-          <p>
-            <code>ts</code> が取り出した文字列と、この日時パターンの形は
-            <strong>ぴったり合わせてください</strong>。区切りが違うだけでも読めません。
-            日付を含まない書式（時刻だけ）は、日をまたいだときに並べられないため使えません。
+          <p class="log-format-callout">
+            <code>ts</code> が取り出した文字列と、この日時パターンの形はぴったり合わせてください。
+            区切りが違うだけでも読めません。日付を含まない書式（時刻だけ）は、
+            日をまたいだときに並べられないため使えません。
             時刻はログに書かれたままの値として扱い、タイムゾーンの変換はしません。
           </p>
+          </section>
 
+          <section class="log-format-guide-section">
           <h4>うまくいかないとき</h4>
           <p>
-            読みたいログを 1 行そのまま「試すログの行」に貼り、<strong>この行で試す</strong>を
-            押してください。各項目に何が取れたか、一致しないときはどこを直せばよいかが出ます
+            読みたいログを 1 行そのまま「試すログの行」に貼り、
+            <span class="log-format-ui">この行で試す</span> を押してください。
+            各項目に何が取れたか、一致しないときはどこを直せばよいかが出ます
             （登録はされません）。よくある原因は次の 3 つです。
           </p>
           <ul>
             <li>
-              <strong>行の全部を書いていない。</strong>
+              <span class="log-format-li-title">行の全部を書いていない</span>
               <code>^</code> から <code>$</code> まで、行の最初から最後までが一致する形にします。
               途中で終わっていると一致しません。
             </li>
             <li>
-              <strong>空白の数が違う。</strong>
+              <span class="log-format-li-title">空白の数が違う</span>
               レベルの桁を揃えるログでは、<code>INFO&nbsp;&nbsp;</code> のように後ろが空いたり
               （左詰め。logback の <code>%-5level</code> など）、<code>&nbsp;&nbsp;INFO</code>
               のように前が空いたり（右詰め。Spring Boot の <code>%5p</code> など）します。
-              空白 1 個ではなく<strong>空白 1 個以上</strong>（<code> +</code>）を使ってください。
+              空白 1 個ではなく空白 1 個以上（<code> +</code>）を使ってください。
             </li>
             <li>
-              <strong>角括弧が入れ子になっている。</strong>
+              <span class="log-format-li-title">角括弧が入れ子になっている</span>
               <code>[^\]]*</code> は最初の <code>]</code> で止まるため、
               <code>[pool-1[worker-3]]</code> のようなスレッド名には一致しません。
               上の「スレッド <code>[pool-1[worker-3]]</code>」のボタンを使ってください。
             </li>
           </ul>
+          </section>
 
+          <section class="log-format-guide-section">
           <h4>読めない形式</h4>
           <ul>
             <li>
-              <strong>1 エントリが 2 行以上になる形式。</strong>
+              <span class="log-format-li-title">1 エントリが 2 行以上になる形式</span>
               一致しなかった行は、直前のエントリの続き（スタックトレース）として扱います。
             </li>
             <li>
-              <strong><code>(a+)+</code> のように繰り返しを入れ子にした書き方。</strong>
+              <span class="log-format-li-title"><code>(a+)+</code> のように繰り返しを入れ子にした書き方</span>
               照合が急激に重くなるため、行の長さに見合わない照合は打ち切り、取り込みを
               失敗させます（画面が固まったままにはなりません）。
             </li>
             <li>
-              <strong><code>(?x)</code>（空白を無視する書き方）。</strong>
+              <span class="log-format-li-title"><code>(?x)</code>（空白を無視する書き方）</span>
               コメントの中に書いたグループを、アプリ側が「ある」と数えてしまいます。
             </li>
           </ul>
+          </section>
 
+          <section class="log-format-guide-section">
           <h4>登録したあと</h4>
           <p>
-            書式のプルダウンから選んで <strong>読み込み</strong> を押すと、その書式で取り込みます
+            書式のプルダウンから選んで <span class="log-format-ui">読み込み</span> を押すと、その書式で取り込みます
             （自動判定に任せることもできます）。書式を直すとインデックスは作り直されます。
             id を変えなくても、正規表現や日時書式を変えれば作り直しの対象です。
           </p>
+          </section>
         </div>
       </details>
 

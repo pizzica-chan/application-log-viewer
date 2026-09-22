@@ -77,6 +77,7 @@ Docker Desktop が止まっていれば **自動起動・待機**（最大約 3 
 |------|----------|
 | 起動 | `docker-up.bat` |
 | 停止 | `docker-down.bat` |
+| 再起動（未起動なら起動だけ） | `docker-restart.bat` |
 | ソース変更の反映 | `scripts\one-click-restart.cmd` |
 | ログ追従 | `docker-up.bat` 相当を PowerShell から `-FollowLogs` 付きで実行（下記） |
 
