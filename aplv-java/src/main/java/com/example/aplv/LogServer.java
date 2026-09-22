@@ -182,7 +182,7 @@ public final class LogServer {
         System.out.println("インデックス: " + IndexStore.tmpIndexDir() + " (APLV_HOME で repo 変更可)");
         System.out.println("保存した検索条件: " + savedSearches.file() + " (APLV_HOME で変更可)");
         System.out.println("利用者定義のログ書式: " + logFormats.file()
-                + " (無くてもよい。APLV_HOME で変更可)");
+                + " (書式を登録するまでファイルは作らない。APLV_HOME で変更可)");
         System.out.println("全文検索 FTS5: " + (enableFts ? "有効" : "無効（--fts で有効化）"));
         System.out.println("ログ書式: "
                 + (requestedFormat != null ? requestedFormat.displayName() : "自動判定"));

@@ -301,10 +301,12 @@ class LogFormatStoreTest {
         assertArrayEquals(before, Files.readAllBytes(file));
     }
 
-    /** ファイルが無ければ空。書式ファイルは必須ではない。 */
+    /** ファイルが無ければ空。書式を登録するまでファイルは作らない。 */
     @Test
     void returnsEmptyWhenFileMissing(@TempDir Path tmp) throws IOException {
-        assertTrue(new LogFormatStore(tmp.resolve(LogFormatStore.FILE_NAME)).load().isEmpty());
+        Path file = tmp.resolve(LogFormatStore.FILE_NAME);
+        assertTrue(new LogFormatStore(file).load().isEmpty());
+        assertFalse(Files.exists(file));
     }
 
     /** 書いた書式を読めること。 */
