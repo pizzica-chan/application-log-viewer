@@ -15,6 +15,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,6 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>複数ファイルの並列インデックスと ts_millis 昇順マージ</li>
  *   <li>offset / limit によるページング</li>
  *   <li>SQL 押し下げ経路と全件走査経路が同一結果を返すこと</li>
+ *   <li>source の絞り込みを SQL に押し下げても結果と実行計画（並べ直しなし）が変わらないこと</li>
  *   <li>取込後の索引構成と統計（旧構成からの移行を含む）</li>
  *   <li>索引作成に失敗したときの後始末（中途半端な状態を残さないこと）</li>
  * </ul>
@@ -428,6 +431,124 @@ class LogIndexTest {
             LogQuery.Result r3 = LogQuery.queryLogs(conn, bySource, 0, 10);
             assertEquals(2, r3.total);
         }
+    }
+
+    /**
+     * source の絞り込みを files で判定して SQL に押し下げても、エントリごとに照合した場合と
+     * 同じ結果になること（件数・並び・ページング・他の条件との併用）。
+     */
+    @Test
+    void querySourceFilterAcrossFiles(@TempDir Path tmp) throws Exception {
+        Path a = writeLog(tmp, "a.log",
+                "2026-06-15 00:00:01.000[main][INFO][com.example.A] - A1\n"
+                        + "2026-06-15 00:00:04.000[main][INFO][com.example.A] - A2\n");
+        Path b = writeLog(tmp, "b.log",
+                "2026-06-15 00:00:02.000[exec-1][ERROR][com.example.B] - B1\n"
+                        + "java.lang.IllegalStateException: boom\n"
+                        + "2026-06-15 00:00:05.000[exec-2][INFO][com.example.B] - B2\n");
+        Path c = writeLog(tmp, "c.log",
+                "2026-06-15 00:00:03.000[main][INFO][com.example.C] - C1\n");
+
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Arrays.asList(a, b, c), null, false, LogFormatSpec.DEFAULT);
+
+            LogQuery.Result onlyB = LogQuery.queryLogs(conn, sourceFilter("b\\.log"), 0, 10);
+            assertEquals(2, onlyB.total);
+            assertEquals(Arrays.asList("B1", "B2"), messages(onlyB));
+            assertTrue(onlyB.page.get(0).source.endsWith("b.log"), onlyB.page.get(0).source);
+
+            // 大文字小文字を無視する（エントリごとに照合していたときと同じ）
+            assertEquals(2, LogQuery.queryLogs(conn, sourceFilter("B\\.LOG"), 0, 10).total);
+
+            // 複数ファイルにまたがっても時刻順で、offset / limit が効く
+            LogQuery.Result ab = LogQuery.queryLogs(conn, sourceFilter("[ab]\\.log"), 1, 2);
+            assertEquals(4, ab.total);
+            assertEquals(Arrays.asList("B1", "A2"), messages(ab));
+
+            LogQuery.Result none = LogQuery.queryLogs(conn, sourceFilter("nomatch"), 0, 10);
+            assertEquals(0, none.total);
+            assertTrue(none.page.isEmpty());
+
+            assertEquals(5, LogQuery.queryLogs(conn, sourceFilter("\\.log"), 0, 10).total);
+
+            QueryFilter withLevel = sourceFilter("b\\.log");
+            withLevel.levels = QueryFilter.parseLevelFilter("ERROR");
+            assertEquals(Arrays.asList("B1"), messages(LogQuery.queryLogs(conn, withLevel, 0, 10)));
+
+            // Java 側で判定する条件と併せても、source の絞り込みが効いたままになる
+            QueryFilter withThread = sourceFilter("b\\.log");
+            withThread.threadRe = QueryFilter.compileRegex("exec-2");
+            LogQuery.Result t = LogQuery.queryLogs(conn, withThread, 0, 10);
+            assertEquals(Arrays.asList("B2"), messages(t));
+            // 列の絞り込みで要る列だけを取り出しても、ページの行はすべての列を持つ
+            LogIndex.EntryRow row = t.page.get(0);
+            assertEquals("com.example.B", row.logger);
+            assertEquals("INFO", row.level);
+            assertEquals("exec-2", row.thread);
+            assertTrue(row.source.endsWith("b.log"), row.source);
+
+            QueryFilter withGrep = sourceFilter("[bc]\\.log");
+            withGrep.grepRe = QueryFilter.compileRegex("boom");
+            withGrep.grepText = "boom";
+            assertEquals(Arrays.asList("B1"), messages(LogQuery.queryLogs(conn, withGrep, 0, 10)));
+            QueryFilter grepOtherFile = sourceFilter("a\\.log");
+            grepOtherFile.grepRe = QueryFilter.compileRegex("boom");
+            grepOtherFile.grepText = "boom";
+            assertEquals(0, LogQuery.queryLogs(conn, grepOtherFile, 0, 10).total);
+        }
+    }
+
+    /**
+     * source の条件を足しても、一覧の実行計画は source なしと同じく索引を時刻順に辿り、
+     * 並べ直しを入れないこと。ファイル数が少ないと SQLite が files を外側に回すことがあるため。
+     */
+    @Test
+    void sourceConditionKeepsIndexOrder(@TempDir Path tmp) throws Exception {
+        List<Path> logs = new ArrayList<>();
+        for (int f = 0; f < 3; f++) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 200; i++) {
+                sb.append(String.format("2026-06-15 00:%02d:%02d.%03d[main][%s][com.example.A] - m%d\n",
+                        f * 20 + i / 60, i % 60, i, i % 10 == 0 ? "ERROR" : "INFO", i));
+            }
+            logs.add(writeLog(tmp, "app" + f + ".log", sb.toString()));
+        }
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, logs, null, false, LogFormatSpec.DEFAULT);
+            String cond = LogQuery.sourceCondition(conn, QueryFilter.compileRegex("app0"));
+            assertTrue(cond.startsWith(" AND "), cond);
+            String order = " ORDER BY e.ts_millis, e.file_id, e.line_no LIMIT 200";
+            for (String where : new String[] {"WHERE 1=1" + cond,
+                    "WHERE 1=1 AND e.level IN ('ERROR')" + cond}) {
+                String plan = explain(conn, LogIndex.selectBase() + where + order);
+                assertFalse(plan.contains("USE TEMP B-TREE"), where + "\n" + plan);
+            }
+        }
+    }
+
+    private static QueryFilter sourceFilter(String regex) {
+        QueryFilter f = new QueryFilter();
+        f.sourceRe = QueryFilter.compileRegex(regex);
+        return f;
+    }
+
+    private static List<String> messages(LogQuery.Result r) {
+        List<String> out = new ArrayList<>();
+        for (LogIndex.EntryRow e : r.page) {
+            out.add(e.message);
+        }
+        return out;
+    }
+
+    private static String explain(Connection conn, String sql) throws Exception {
+        StringBuilder plan = new StringBuilder();
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("EXPLAIN QUERY PLAN " + sql)) {
+            while (rs.next()) {
+                plan.append(rs.getString(4)).append('\n');
+            }
+        }
+        return plan.toString();
     }
 
     /** total は全ヒット数、page は offset/limit で分割されること。 */

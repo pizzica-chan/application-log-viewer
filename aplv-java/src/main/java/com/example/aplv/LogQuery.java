@@ -10,15 +10,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import com.example.aplv.LogIndex.EntryRow;
 
 /**
  * SQLite インデックスに対するフィルタリング・ページング。
  *
- * <p>レベル・日時は SQL（インデックス利用）で絞り込み、正規表現系（logger / thread /
- * message / source）は DB 列だけで先に評価し、grep 指定時のみ通過行の
- * 生ログを byte 範囲から読み出す（不要なディスク I/O を省略）。
+ * <p>レベル・日時は SQL（インデックス利用）で絞り込む。source（ファイルのパス）の正規表現も
+ * files テーブルで判定して SQL の条件に置き換える。logger / thread / message の正規表現は
+ * DB 列だけで先に評価し、grep 指定時のみ通過行の生ログを byte 範囲から読み出す
+ * （不要なディスク I/O を省略）。
  *
  * <p>正規表現・grep がいずれも未指定なら Java 側で判定するものがないため、件数と 1 ページ分を
  * まるごと SQL（{@code COUNT(*)} と {@code LIMIT/OFFSET}）に任せ、全ヒットを {@link EntryRow}
@@ -102,6 +104,9 @@ public final class LogQuery {
             where.append(" AND e.ts_millis <= ?");
             params.add(filter.untilMillis);
         }
+        if (filter.sourceRe != null) {
+            where.append(sourceCondition(conn, filter.sourceRe));
+        }
 
         // grep がプレーンなリテラルかつ FTS5 が使えるなら、まず FTS で候補 id を絞り込む。
         // （最終判定は下の正規表現検証で確定するので結果は同一。）
@@ -119,10 +124,60 @@ public final class LogQuery {
         return scanAndFilter(conn, whereSql, params, filter, offset, limit);
     }
 
-    /** SQL の絞り込みだけでは確定できず、行ごとの判定が要るか。 */
+    /**
+     * source（ログファイルのパス）の正規表現を、files テーブルだけで判定して
+     * {@code e.file_id IN (...)} の条件（先頭に {@code " AND "} 付き。絞り込まないなら空文字）にする。
+     *
+     * <p>パスはファイルごとに 1 つなので、エントリごとに照合しなくても結果は同じになる。
+     * SQL 側で確定するので、source だけの絞り込みは {@code COUNT(*)} と {@code LIMIT} で返せる。
+     * id は DB から取り出した整数なので、バインド変数の上限を気にせず SQL に直接埋め込む。
+     *
+     * <p>列に単項の {@code +} を付け、この条件を結合順の選択に使わせない。付けないと
+     * SQLite が files を外側に回し、並べ直し（{@code USE TEMP B-TREE FOR ... ORDER BY}）の入る
+     * 計画を選ぶことがある（3 ファイル・71.8 万件の索引で確認。時間は 1 ページ目で 17ms と
+     * 付けた場合と同じだったが、並べ直す行数はヒット件数しだいで増える）。付けておけば実行計画は
+     * source を指定しない場合と同じ形のまま、辿った行をこの条件でふるうだけになる。
+     *
+     * <p>実測（100 万行・106 MB を 30 ファイルに分けた 71.8 万件、Windows 11 / JDK 11、
+     * 5 回の中央値を 3 ラウンド取った中央値）: 全ファイルに一致 1,509ms → 7ms、
+     * 5 ファイルに一致 2,025ms → 30ms、それに logger の正規表現を併用 2,024ms → 138ms。
+     */
+    static String sourceCondition(Connection conn, Pattern sourceRe) throws SQLException {
+        List<Long> ids = new ArrayList<>();
+        int fileCount = 0;
+        try (PreparedStatement ps = conn.prepareStatement("SELECT id, path FROM files");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                fileCount++;
+                if (sourceRe.matcher(rs.getString(2)).find()) {
+                    ids.add(rs.getLong(1));
+                }
+            }
+        }
+        if (ids.size() == fileCount) {
+            // すべてのファイルが一致するなら絞り込むものはない
+            return "";
+        }
+        if (ids.isEmpty()) {
+            return " AND 0";
+        }
+        StringBuilder sql = new StringBuilder(" AND +e.file_id IN (");
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append(ids.get(i).longValue());
+        }
+        return sql.append(")").toString();
+    }
+
+    /**
+     * SQL の絞り込みだけでは確定できず、行ごとの判定が要るか。
+     * source は {@link #sourceCondition} で SQL 側に押し下げ済みなので含めない。
+     */
     private static boolean needsJavaFilter(QueryFilter f) {
         return f.loggerRe != null || f.threadRe != null || f.messageRe != null
-                || f.sourceRe != null || f.grepRe != null;
+                || f.grepRe != null;
     }
 
     /**
@@ -172,11 +227,17 @@ public final class LogQuery {
      *       （エントリごとの seek を避ける）</li>
      *   <li>grep がメタ文字を含まないリテラルなら、UTF-8 デコードせずバイト列のまま探す
      *       （既存の grep は ASCII だけ大文字小文字を無視するので、同じ畳み方で比べる）</li>
-     *   <li>logger などの文字列は、列の絞り込みがあるときと、ページに載る行でだけ取り出す</li>
+     *   <li>logger などの文字列は、ページに載る行でだけ取り出す。列の絞り込みがあるときも、
+     *       照合に使う列だけを取り出す</li>
      * </ul>
      * 実測（100 万行・108 MB・{@code --fts} なし、Windows 11 / JDK 8、5 回の中央値）:
      * リテラル 5,793ms → 941ms、正規表現 5,678ms → 1,005ms、
      * ありふれたリテラル（13 万件ヒット）5,709ms → 663ms。
+     *
+     * <p>列の絞り込みで照合に使う列だけを取り出すようにしたときの実測（100 万行・106 MB を
+     * 30 ファイルに分けた 71.8 万件、Windows 11 / JDK 11、5 回の中央値を 3 ラウンド取った中央値）:
+     * logger 1,537ms → 588ms、message 1,554ms → 657ms、thread 1,508ms → 596ms、
+     * logger + grep 1,591ms → 705ms。以前は 5 つの文字列列をすべて作ってから照合していた。
      */
     private static Result scanAndFilter(Connection conn, String where, List<Object> params,
             QueryFilter filter, long offset, long limit) throws SQLException {
@@ -197,12 +258,8 @@ public final class LogQuery {
             bind(ps, params);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    EntryRow e = null;
-                    if (needsColumns) {
-                        e = LogIndex.rowFrom(rs);
-                        if (!matchesRegexColumns(e, filter)) {
-                            continue;
-                        }
+                    if (needsColumns && !matchesRegexColumns(rs, filter)) {
+                        continue;
                     }
                     String raw = null;
                     if (needsRaw) {
@@ -229,9 +286,7 @@ public final class LogQuery {
                         }
                     }
                     if (total >= offset && page.size() < limit) {
-                        if (e == null) {
-                            e = LogIndex.rowFrom(rs);
-                        }
+                        EntryRow e = LogIndex.rowFrom(rs);
                         e.raw = raw;
                         page.add(e);
                     }
@@ -264,10 +319,9 @@ public final class LogQuery {
         return reader.read(start, len, into);
     }
 
-    /** 列（logger / thread / message / source）の絞り込みがあるか。 */
+    /** 列（logger / thread / message）の絞り込みがあるか。source は SQL 側で絞り込み済み。 */
     private static boolean needsRegexColumns(QueryFilter f) {
-        return f.loggerRe != null || f.threadRe != null || f.messageRe != null
-                || f.sourceRe != null;
+        return f.loggerRe != null || f.threadRe != null || f.messageRe != null;
     }
 
     private static int bind(PreparedStatement ps, List<Object> params) throws SQLException {
@@ -281,19 +335,17 @@ public final class LogQuery {
     /**
      * DB 列のみで判定（grep 前。ディスク読み不要）。
      *
-     * <p>レベル・日時は SQL 側で絞り込み済みのため、ここでは正規表現だけを評価する。
+     * <p>レベル・日時・source は SQL 側で絞り込み済みのため、ここでは正規表現だけを評価する。
+     * 列の文字列は、絞り込みに使う列だけを取り出す（一致しない行のために使わない文字列を作らない）。
      */
-    private static boolean matchesRegexColumns(EntryRow e, QueryFilter f) {
-        if (f.sourceRe != null && !f.sourceRe.matcher(e.source).find()) {
+    private static boolean matchesRegexColumns(ResultSet rs, QueryFilter f) throws SQLException {
+        if (f.loggerRe != null && !f.loggerRe.matcher(rs.getString(7)).find()) {
             return false;
         }
-        if (f.loggerRe != null && !f.loggerRe.matcher(e.logger).find()) {
+        if (f.threadRe != null && !f.threadRe.matcher(rs.getString(9)).find()) {
             return false;
         }
-        if (f.threadRe != null && !f.threadRe.matcher(e.thread).find()) {
-            return false;
-        }
-        if (f.messageRe != null && !f.messageRe.matcher(e.message).find()) {
+        if (f.messageRe != null && !f.messageRe.matcher(rs.getString(10)).find()) {
             return false;
         }
         return true;
