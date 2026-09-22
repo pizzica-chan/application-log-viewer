@@ -1021,7 +1021,8 @@ public final class LogServer {
             return;
         }
         // 画面は必ず文字列を送るが、API を直に叩かれると項目ごと欠けることがある。
-        // 欠け・null は空文字と同じに扱い、500 ではなく理由つきの 400 で返す。
+        // 欠け・null は空文字と同じに扱う（500 にはしない）。sample が空なら
+        // 理由つきの 400、timestamp が空なら正規表現だけを見た 200 になる。
         String sample = orEmpty(jsonString(obj, "sample"));
         String timestamp = orEmpty(jsonString(obj, "timestamp")).trim();
         boolean timestampChecked = !timestamp.isEmpty();
