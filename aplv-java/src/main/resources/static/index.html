@@ -696,6 +696,21 @@
               上の「スレッド <code>[pool-1[worker-3]]</code>」のボタンを使ってください。
             </li>
           </ul>
+          <p class="log-format-callout">
+            <strong>外れ方は 2 通りあり、画面への出方が違います。</strong>
+          </p>
+          <ul>
+            <li>
+              <span class="log-format-li-title">正規表現は一致したが、日時を読めない</span>
+              読み飛ばしとして件数と例が出ます。直すのは正規表現ではなく
+              <strong>日時書式のほう</strong>です。
+            </li>
+            <li>
+              <span class="log-format-li-title">正規表現がそもそも一致しない</span>
+              継続行（スタックトレース）と見分けられないため、
+              <strong>直前のエントリの本文</strong>として扱います。読み飛ばしには数えません。
+            </li>
+          </ul>
           </section>
 
           <section class="log-format-guide-section">
@@ -703,7 +718,9 @@
           <ul>
             <li>
               <span class="log-format-li-title">1 エントリが 2 行以上になる形式</span>
-              一致しなかった行は、直前のエントリの続き（スタックトレース）として扱います。
+              2 行目以降は直前のエントリの続き（スタックトレース）として扱うので、
+              <strong>そこに書かれたレベルやロガーは列に出ません</strong>。
+              1 行目だけで項目がそろう形式にしてください。
             </li>
             <li>
               <span class="log-format-li-title"><code>(a+)+</code> のように繰り返しを入れ子にした書き方</span>
