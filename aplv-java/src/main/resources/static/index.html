@@ -660,7 +660,7 @@
           <p>
             読みたいログを 1 行そのまま「試すログの行」に貼り、<strong>この行で試す</strong>を
             押してください。各項目に何が取れたか、当たらないときはどこを直せばよいかが出ます
-            （登録はされません）。よくある原因は次の 2 つです。
+            （登録はされません）。よくある原因は次の 3 つです。
           </p>
           <ul>
             <li>
@@ -674,6 +674,12 @@
               （左詰め。logback の <code>%-5level</code> など）、<code>&nbsp;&nbsp;INFO</code>
               のように前が空いたり（右詰め。Spring Boot の <code>%5p</code> など）します。
               空白 1 個ではなく<strong>空白 1 個以上</strong>（<code> +</code>）を使ってください。
+            </li>
+            <li>
+              <strong>角括弧が入れ子になっている。</strong>
+              <code>[^\]]*</code> は最初の <code>]</code> で止まるため、
+              <code>[pool-1[worker-3]]</code> のようなスレッド名には一致しません。
+              上の「スレッド <code>[pool-1[worker-3]]</code>」のボタンを使ってください。
             </li>
           </ul>
 

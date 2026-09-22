@@ -682,14 +682,27 @@ paths:
         content:
           application/json:
             schema:
-              allOf:
-                - $ref: '#/components/schemas/LogFormat'
-                - type: object
-                  required: [sample]
-                  properties:
-                    sample:
-                      type: string
-                      description: 試すログの 1 行
+              # LogFormat を allOf で取り込まない。保存と違って id は使わず（サーバ側が
+              # 仮の値を通す）、timestamp も空でよいため、必須の集合が別になる。
+              type: object
+              required: [pattern, sample]
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                pattern:
+                  type: string
+                  description: 1 行に当てる Java の正規表現（名前付きグループ `ts` が必須）
+                  maxLength: 4000
+                timestamp:
+                  type: string
+                  description: |
+                    `ts` の読み方。**空でもよい**。空のときは正規表現だけを見て、
+                    `ts_text` と `timestamp_checked: false` を返す。
+                  maxLength: 100
+                sample:
+                  type: string
+                  description: 試すログの 1 行
       responses:
         '200':
           description: 試した結果
@@ -860,6 +873,11 @@ components:
         log_format_name:
           type: string
           description: 書式の表示名（画面に出す用）
+        log_format_custom:
+          type: boolean
+          description: |
+            使った書式が利用者定義かどうか。画面は読み飛ばした行の説明を
+            これで書き分ける（利用者定義なら、直す先は自分の正規表現）。
         log_format_auto:
           type: boolean
           description: 自動判定かどうか。`false` なら利用者が明示指定している

@@ -444,6 +444,50 @@ class CustomLogFormatTest {
         assertTrue(e.getMessage().contains("cmt"), e.getMessage());
     }
 
+    /**
+     * 日時書式が空のままの試し打ちでも、取り込みと同じように書式 id つきで失敗すること。
+     *
+     * <p>「この行で試す」は<strong>日時書式を空のまま使うのがふつうの手順</strong>
+     * （正規表現を組み立ててから日時書式を書く）。ここが {@link #parse} と別経路だと、
+     * 同じ壊れた書式が、取り込みでは原因つきの 400、試し打ちでは原因不明の 500 になる。
+     * 利用者がいちばん先に触るほうが、いちばん不親切になってしまう。
+     */
+    @Test
+    void matchOnlyPathsReportFormatIdToo() {
+        CustomLogFormat f = new CustomLogFormat("cmt2", "コメント入り",
+                "(?x) ^(?<ts>\\d{4}/\\d{2}/\\d{2}) \\  # (?<level>zzz)\n (?<message>.*) $",
+                "yyyy/MM/dd");
+        CustomLogFormat.FormatFailure viaGroups = assertThrows(
+                CustomLogFormat.FormatFailure.class, () -> f.matchedGroups("2026/06/15 なにか"));
+        assertTrue(viaGroups.getMessage().contains("cmt2"), viaGroups.getMessage());
+
+        // matchedTimestamp は ts しか触らないので、この書式では落ちずに値を返す。
+        // 包んであること自体は、落ちる書式で確かめる
+        CustomLogFormat noTsAtRuntime = new CustomLogFormat("cmt3", "ts がコメントの中",
+                "(?x) ^(?<ts>\\d{4}) # (?<level>zzz)\n (?<message>.*) $", "yyyy");
+        assertThrows(CustomLogFormat.FormatFailure.class,
+                () -> noTsAtRuntime.matchedGroups("2026 なにか"));
+    }
+
+    /**
+     * 後戻りの打ち切りは、日時書式が空の試し打ちでも効くこと。
+     * 効かないと、試し打ちを押した利用者の画面が返ってこなくなる。
+     */
+    @Test
+    void matchOnlyPathsAreAlsoBudgeted() {
+        CustomLogFormat f = new CustomLogFormat("bad2", "暴走する書式",
+                "^(?<ts>(a+)+b)$", TS);
+        StringBuilder line = new StringBuilder();
+        for (int i = 0; i < 20; i++) {
+            line.append('a');
+        }
+        line.append('!');
+        assertThrows(CustomLogFormat.BudgetExceededException.class,
+                () -> f.matchedTimestamp(line.toString()));
+        assertThrows(CustomLogFormat.BudgetExceededException.class,
+                () -> f.matchedGroups(line.toString()));
+    }
+
     /** ts グループが無い書式は作れないこと（時刻が無いと索引に入れられない）。 */
     @Test
     void requiresTimestampGroup() {

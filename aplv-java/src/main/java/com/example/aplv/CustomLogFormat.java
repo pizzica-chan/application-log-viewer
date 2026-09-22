@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -224,9 +225,26 @@ public final class CustomLogFormat {
         if (end == 0) {
             return null;
         }
-        String line = new String(b, 0, end, StandardCharsets.UTF_8);
+        final String line = new String(b, 0, end, StandardCharsets.UTF_8);
+        return guarded(new Supplier<LogParser.ParsedLine>() {
+            @Override
+            public LogParser.ParsedLine get() {
+                return match(line);
+            }
+        });
+    }
+
+    /**
+     * この書式を当てる処理を包み、定義に由来する失敗を {@link FormatFailure} に変える。
+     *
+     * <p><strong>照合する経路はすべてここを通すこと。</strong>取り込みだけを包んで
+     * 試し打ちを素通しにすると、同じ壊れた書式が、取り込みでは「どの書式が原因か」を
+     * 示す 400 になり、試し打ちでは原因の分からない 500 になる。<strong>先に触るのは
+     * 試し打ちのほう</strong>なので、いちばん親切であるべき経路がいちばん不親切になる。
+     */
+    private <T> T guarded(Supplier<T> body) {
         try {
-            return match(line);
+            return body.get();
         } catch (FormatFailure e) {
             throw e;
         } catch (RuntimeException e) {
@@ -241,9 +259,13 @@ public final class CustomLogFormat {
         }
     }
 
+    /** 読ませる文字数に上限を掛けた照合器。 */
+    private Matcher matcher(String line) {
+        return pattern.matcher(new BoundedCharSequence(id, line, budgetFor(line.length())));
+    }
+
     private LogParser.ParsedLine match(String line) {
-        Matcher m = pattern.matcher(
-                new BoundedCharSequence(id, line, budgetFor(line.length())));
+        Matcher m = matcher(line);
         if (!m.matches()) {
             return null;
         }
@@ -268,9 +290,14 @@ public final class CustomLogFormat {
      * <p>試し打ちで「一致しなかった」のか「一致したが日時を読めなかった」のかを
      * 区別するために使う。直す場所（正規表現か日時書式か）が違うため。
      */
-    String matchedTimestamp(String line) {
-        Matcher m = pattern.matcher(new BoundedCharSequence(id, line, budgetFor(line.length())));
-        return m.matches() ? m.group(GROUP_TS) : null;
+    String matchedTimestamp(final String line) {
+        return guarded(new Supplier<String>() {
+            @Override
+            public String get() {
+                Matcher m = matcher(line);
+                return m.matches() ? m.group(GROUP_TS) : null;
+            }
+        });
     }
 
     /**
@@ -279,17 +306,22 @@ public final class CustomLogFormat {
      * <p>日時書式をまだ書いていない段階の試し打ちで使う。日時は文字列のままなので、
      * ここでは解釈しない。
      */
-    Map<String, String> matchedGroups(String line) {
-        Matcher m = pattern.matcher(new BoundedCharSequence(id, line, budgetFor(line.length())));
-        if (!m.matches()) {
-            return Collections.emptyMap();
-        }
-        Map<String, String> values = new LinkedHashMap<String, String>();
-        values.put("level", group(m, hasLevel, "level").toUpperCase(Locale.ROOT));
-        values.put("thread", group(m, hasThread, "thread"));
-        values.put("logger", group(m, hasLogger, "logger"));
-        values.put("message", group(m, hasMessage, "message"));
-        return values;
+    Map<String, String> matchedGroups(final String line) {
+        return guarded(new Supplier<Map<String, String>>() {
+            @Override
+            public Map<String, String> get() {
+                Matcher m = matcher(line);
+                if (!m.matches()) {
+                    return Collections.emptyMap();
+                }
+                Map<String, String> values = new LinkedHashMap<String, String>();
+                values.put("level", group(m, hasLevel, "level").toUpperCase(Locale.ROOT));
+                values.put("thread", group(m, hasThread, "thread"));
+                values.put("logger", group(m, hasLogger, "logger"));
+                values.put("message", group(m, hasMessage, "message"));
+                return values;
+            }
+        });
     }
 
     static long budgetFor(int length) {

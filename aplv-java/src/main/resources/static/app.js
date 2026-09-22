@@ -565,9 +565,14 @@ function updateParseWarning(data) {
   }
   els.parseWarning.hidden = false;
   els.parseWarningDetails.open = false;
-  els.parseWarningText.textContent =
-    `${skipped.toLocaleString()} 行を Java アプリログ形式として認識できませんでした` +
-    "（先頭の孤立行など。スタックトレース等の継続行は除く）。";
+  // 利用者定義の書式で外れたときに「Java アプリログ形式として認識できません」と出すと、
+  // 直す先が自分の書いた正規表現だと分からない。使った書式で言い分ける。
+  els.parseWarningText.textContent = data.log_format_custom
+    ? `${skipped.toLocaleString()} 行が、書式「${data.log_format_name}」の正規表現に` +
+      "一致しませんでした（先頭の孤立行など。継続行として扱った行は除く）。" +
+      "「書式の管理」の「この行で試す」に、下の行を貼って確かめてください。"
+    : `${skipped.toLocaleString()} 行を Java アプリログ形式として認識できませんでした` +
+      "（先頭の孤立行など。スタックトレース等の継続行は除く）。";
   els.parseWarningSamples.innerHTML = "";
   const samples = data.skipped_samples || [];
   for (const s of samples) {

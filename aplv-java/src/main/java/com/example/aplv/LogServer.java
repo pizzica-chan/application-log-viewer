@@ -525,6 +525,9 @@ public final class LogServer {
         LogFormatSpec used = resolvedFormat;
         payload.addProperty("log_format", used.id());
         payload.addProperty("log_format_name", used.displayName());
+        // 読み飛ばした行の説明を書き分けるために要る。利用者定義の書式で外れたときに
+        // 「Java アプリログ形式として認識できません」と言われても、直す先が分からない
+        payload.addProperty("log_format_custom", used.isCustom());
         payload.addProperty("log_format_auto", requestedFormat == null);
         payload.add("log_formats", formatChoices(customFormats()));
         if (logFormatsError != null) {
@@ -631,9 +634,16 @@ public final class LogServer {
         // "auto"（または未指定）は自動判定。未知の id はエラーにして黙って既定へ落とさない。
         LogFormatSpec format = null;
         if (!formatId.isEmpty() && !"auto".equals(formatId)) {
-            format = LogFormatSpec.byId(formatId, customFormats());
+            List<CustomLogFormat> customs = customFormats();
+            format = LogFormatSpec.byId(formatId, customs);
             if (format == null) {
-                sendErrorJson(ex, 400, "未知のログ書式です: " + formatId);
+                // 書式ファイルを読めていないなら、原因はそちら。「未知の書式」とだけ返すと、
+                // 選んだ書式が消えたように見えて、直すべきファイルに辿り着けない
+                // （自動判定はこの場合「書式ファイルを読めません」と言う。言い分けない）。
+                String error = logFormatsError;
+                sendErrorJson(ex, 400, error != null
+                        ? "書式ファイルを読めないため、書式 " + formatId + " を引けません: " + error
+                        : "未知のログ書式です: " + formatId);
                 return;
             }
         }
@@ -1042,43 +1052,39 @@ public final class LogServer {
             sendErrorJson(ex, 400, "試すログの行を入れてください");
             return;
         }
-        // 実際の取り込みと同じ経路（バイト列から）で試す
-        byte[] bytes = sample.getBytes(StandardCharsets.UTF_8);
-        LogParser.ParsedLine parsed;
+        // 書式に触る処理はまとめて包む。1 か所でも外に出すと、そこだけが
+        // 原因の分からない 500 になる（実際、項目の取り出しだけが素通しだった）。
         try {
-            parsed = timestampChecked ? format.parse(bytes, bytes.length) : null;
-        } catch (CustomLogFormat.FormatFailure e) {
-            sendErrorJson(ex, 400, e.getMessage());
-            return;
-        }
-        String matchedTs;
-        try {
-            matchedTs = format.matchedTimestamp(sample);
-        } catch (CustomLogFormat.FormatFailure e) {
-            sendErrorJson(ex, 400, e.getMessage());
-            return;
-        }
-        payload.addProperty("timestamp_checked", timestampChecked);
-        if (!timestampChecked) {
-            // 正規表現だけを見る。日時として読めるかは、日時書式を入れてから確かめる
-            payload.addProperty("matched", matchedTs != null);
-            if (matchedTs == null) {
-                payload.addProperty("reason", NO_MATCH_REASON);
-            } else {
-                addMatchedGroups(payload, format, sample, matchedTs);
+            // 実際の取り込みと同じ経路（バイト列から）で試す
+            byte[] bytes = sample.getBytes(StandardCharsets.UTF_8);
+            LogParser.ParsedLine parsed =
+                    timestampChecked ? format.parse(bytes, bytes.length) : null;
+            String matchedTs = format.matchedTimestamp(sample);
+            payload.addProperty("timestamp_checked", timestampChecked);
+            if (!timestampChecked) {
+                // 正規表現だけを見る。日時として読めるかは、日時書式を入れてから確かめる
+                payload.addProperty("matched", matchedTs != null);
+                if (matchedTs == null) {
+                    payload.addProperty("reason", NO_MATCH_REASON);
+                } else {
+                    addMatchedGroups(payload, format, sample, matchedTs);
+                }
+                sendJson(ex, 200, payload);
+                return;
             }
-            sendJson(ex, 200, payload);
+            payload.addProperty("matched", parsed != null);
+            if (parsed == null) {
+                payload.addProperty("reason", tryFailureReason(format, sample));
+            } else {
+                payload.addProperty("timestamp", TimeUtil.formatIso(parsed.tsMillis));
+                payload.addProperty("level", parsed.level);
+                payload.addProperty("thread", parsed.thread);
+                payload.addProperty("logger", parsed.logger);
+                payload.addProperty("message", parsed.message);
+            }
+        } catch (CustomLogFormat.FormatFailure e) {
+            sendErrorJson(ex, 400, e.getMessage());
             return;
-        }
-        payload.addProperty("matched", parsed != null);
-        if (parsed == null) {
-            payload.addProperty("reason", tryFailureReason(format, sample));
-        } else {
-            payload.addProperty("timestamp", TimeUtil.formatIso(parsed.tsMillis));
-            payload.addProperty("level", parsed.level);
-            payload.addProperty("thread", parsed.thread);
-            payload.addProperty("logger", parsed.logger);
-            payload.addProperty("message", parsed.message);
         }
         sendJson(ex, 200, payload);
     }
