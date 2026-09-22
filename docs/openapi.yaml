@@ -695,7 +695,9 @@ paths:
                 name:
                   type: string
                   maxLength: 100
-                  description: 任意。表示名（失敗文では id より優先されない。id が空のときの補助）
+                  description: |
+                    任意。表示名。**失敗文には出ない**（呼び名は `id`、未指定なら
+                    「いま入力中のもの」）。試し打ちでは値の検査にだけ使う。
                 pattern:
                   type: string
                   description: 1 行に一致させる Java の正規表現（名前付きグループ `ts` が必須）

@@ -28,7 +28,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 if (-not $SkipDockerDesktopStart) {
     Start-DockerDesktopIfNeeded
 } elseif (-not (Test-DockerDaemon)) {
-    throw "Docker デーモンに接続できません。-SkipDockerDesktopStart を外すか、Docker Desktop を手動で起動してください。"
+    throw 'Docker デーモンに接続できません。-SkipDockerDesktopStart を外すか、Docker Desktop を手動で起動してください。'
 }
 
 $psOutput = & docker compose ps --status running -q
