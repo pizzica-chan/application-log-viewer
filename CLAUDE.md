@@ -12,7 +12,7 @@ Java 8 / JDK 内蔵 HTTP サーバ / SQLite インデックス。実装は `aplv
 @.cursor/rules/performance-claims.mdc
 @.cursor/rules/powershell-encoding.mdc
 
-ルールを追加・変更するときは `.cursor/rules/` 側を正本として直し、この一覧にも追記する。
+ルールの中身は `.cursor/rules/` にある。追加・変更はそちらを直し、この一覧にも追記する。
 
 ## ビルドとテスト
 
