@@ -461,12 +461,13 @@ class CustomLogFormatTest {
                 CustomLogFormat.FormatFailure.class, () -> f.matchedGroups("2026/06/15 なにか"));
         assertTrue(viaGroups.getMessage().contains("cmt2"), viaGroups.getMessage());
 
-        // matchedTimestamp は ts しか触らないので、この書式では落ちずに値を返す。
-        // 包んであること自体は、落ちる書式で確かめる
-        CustomLogFormat noTsAtRuntime = new CustomLogFormat("cmt3", "ts がコメントの中",
-                "(?x) ^(?<ts>\\d{4}) # (?<level>zzz)\n (?<message>.*) $", "yyyy");
-        assertThrows(CustomLogFormat.FormatFailure.class,
-                () -> noTsAtRuntime.matchedGroups("2026 なにか"));
+        // matchedTimestamp は ts しか触らないので、上の書式では落ちない。
+        // こちらは ts そのものをコメントの中に置き、その経路でも包まれることを見る
+        CustomLogFormat tsInComment = new CustomLogFormat("cmt3", "ts がコメントの中",
+                "(?x) ^\\d{4} # (?<ts>zzz)\n", "yyyy");
+        CustomLogFormat.FormatFailure viaTs = assertThrows(
+                CustomLogFormat.FormatFailure.class, () -> tsInComment.matchedTimestamp("2026"));
+        assertTrue(viaTs.getMessage().contains("cmt3"), viaTs.getMessage());
     }
 
     /**

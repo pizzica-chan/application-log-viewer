@@ -570,7 +570,9 @@ function updateParseWarning(data) {
   els.parseWarningText.textContent = data.log_format_custom
     ? `${skipped.toLocaleString()} 行が、書式「${data.log_format_name}」の正規表現に` +
       "一致しませんでした（先頭の孤立行など。継続行として扱った行は除く）。" +
-      "「書式の管理」の「この行で試す」に、下の行を貼って確かめてください。"
+      "下の「ファイル名:行番号」の行をログから取り出し、" +
+      "「書式の管理」の「この行で試す」に貼って確かめてください" +
+      "（下に出る例は長いと末尾を切り詰めるので、そのままでは一致しません）。"
     : `${skipped.toLocaleString()} 行を Java アプリログ形式として認識できませんでした` +
       "（先頭の孤立行など。スタックトレース等の継続行は除く）。";
   els.parseWarningSamples.innerHTML = "";
