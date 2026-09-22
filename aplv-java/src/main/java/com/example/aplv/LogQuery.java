@@ -134,9 +134,9 @@ public final class LogQuery {
      *
      * <p>列に単項の {@code +} を付け、この条件を結合順の選択に使わせない。付けないと
      * SQLite が files を外側に回し、並べ直し（{@code USE TEMP B-TREE FOR ... ORDER BY}）の入る
-     * 計画を選ぶことがある（3 ファイル・71.8 万件の索引で確認。時間は 1 ページ目で 17ms と
-     * 付けた場合と同じだったが、並べ直す行数はヒット件数しだいで増える）。付けておけば実行計画は
-     * source を指定しない場合と同じ形のまま、辿った行をこの条件でふるうだけになる。
+     * 計画を選ぶことがある（3 ファイル・71.8 万件の索引で確認。1 ページ目の時間は 17ms で、
+     * 付けた場合と差はなかった）。速さのためではなく、実行計画を source を指定しない場合と
+     * 同じ形に保つために付けている。付けておけば、辿った行をこの条件でふるうだけになる。
      *
      * <p>実測（100 万行・106 MB を 30 ファイルに分けた 71.8 万件、Windows 11 / JDK 11、
      * 5 回の中央値を 3 ラウンド取った中央値）: 全ファイルに一致 1,509ms → 7ms、
@@ -337,6 +337,7 @@ public final class LogQuery {
      *
      * <p>レベル・日時・source は SQL 側で絞り込み済みのため、ここでは正規表現だけを評価する。
      * 列の文字列は、絞り込みに使う列だけを取り出す（一致しない行のために使わない文字列を作らない）。
+     * 列番号は {@link LogIndex#rowFrom} と同じ。
      */
     private static boolean matchesRegexColumns(ResultSet rs, QueryFilter f) throws SQLException {
         if (f.loggerRe != null && !f.loggerRe.matcher(rs.getString(7)).find()) {
