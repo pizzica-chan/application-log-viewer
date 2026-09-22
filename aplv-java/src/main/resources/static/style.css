@@ -1188,6 +1188,18 @@ dialog pre {
   resize: vertical;
 }
 
+.log-format-id-note {
+  margin: -0.35rem 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.log-format-editor input[readonly] {
+  background: var(--panel);
+  color: var(--muted);
+}
+
 .log-format-actions {
   display: flex;
   gap: 0.5rem;

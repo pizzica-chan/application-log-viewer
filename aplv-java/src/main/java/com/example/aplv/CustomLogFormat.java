@@ -17,7 +17,8 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * 利用者が JSON で定義したログ書式。1 行を 1 本の正規表現で解析する。
+ * 利用者が {@code aplv-log-formats.txt} に定義したログ書式（{@link LogFormatStore}）。
+ * 1 行を 1 本の正規表現で解析する。
  *
  * <p>組み込み書式（{@link LogFormat}）はバイト列のまま数バイトを見て弾けるが、この書式は
  * 行を UTF-8 デコードしてから正規表現にかけるため重い。100 万行あたりの解析時間は

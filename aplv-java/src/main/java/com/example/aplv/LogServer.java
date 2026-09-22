@@ -1020,8 +1020,10 @@ public final class LogServer {
         if (obj == null) {
             return;
         }
-        String sample = jsonString(obj, "sample");
-        String timestamp = jsonString(obj, "timestamp").trim();
+        // 画面は必ず文字列を送るが、API を直に叩かれると項目ごと欠けることがある。
+        // 欠け・null は空文字と同じに扱い、500 ではなく理由つきの 400 で返す。
+        String sample = orEmpty(jsonString(obj, "sample"));
+        String timestamp = orEmpty(jsonString(obj, "timestamp")).trim();
         boolean timestampChecked = !timestamp.isEmpty();
         JsonObject payload = new JsonObject();
         CustomLogFormat format;
@@ -1208,6 +1210,11 @@ public final class LogServer {
             throw new IllegalArgumentException(key + " は文字列で指定してください");
         }
         return value.getAsJsonPrimitive().getAsString();
+    }
+
+    /** 無い・null を空文字に均す。「入れてください」と言えるようにするため。 */
+    private static String orEmpty(String value) {
+        return value != null ? value : "";
     }
 
     /**

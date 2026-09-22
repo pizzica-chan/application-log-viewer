@@ -447,6 +447,10 @@
           id
           <input id="log-format-id" placeholder="my-app" maxlength="40">
         </label>
+        <p id="log-format-id-note" class="log-format-id-note" hidden>
+          編集中は id を変えられません。別の書式として登録したいときは
+          「入力をクリア」を押してください。
+        </p>
         <label>
           名前
           <input id="log-format-name" placeholder="自社アプリ形式" maxlength="100">
@@ -666,8 +670,10 @@
             </li>
             <li>
               <strong>空白の数が違う。</strong>
-              レベルを右詰めにするログ（<code>INFO&nbsp;&nbsp;</code> のように後ろが空く）では、
-              空白 1 個ではなく<strong>空白 1 個以上</strong>（<code> +</code>）を使います。
+              レベルの桁を揃えるログでは、<code>INFO&nbsp;&nbsp;</code> のように後ろが空いたり
+              （左詰め。logback の <code>%-5level</code> など）、<code>&nbsp;&nbsp;INFO</code>
+              のように前が空いたり（右詰め。Spring Boot の <code>%5p</code> など）します。
+              空白 1 個ではなく<strong>空白 1 個以上</strong>（<code> +</code>）を使ってください。
             </li>
           </ul>
 

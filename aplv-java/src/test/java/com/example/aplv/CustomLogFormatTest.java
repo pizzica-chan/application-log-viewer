@@ -121,6 +121,36 @@ class CustomLogFormatTest {
         assertNull(parse(simple, "2026/06/15 [pool-1[worker-3]] 開始"));
     }
 
+    /**
+     * ガイドが言う「空白 1 個以上」で、桁を揃えたログを両方向とも読めること。
+     *
+     * <p>レベルの桁を揃えるログには、後ろが空くもの（左詰め。logback の {@code %-5level}）と
+     * 前が空くもの（右詰め。Spring Boot の {@code %5p}）がある。空白 1 個で書くと
+     * どちらも一致しない ―― これがいちばん多いつまずきなので、両方を押さえる。
+     */
+    @Test
+    void paddedLevelsNeedOneOrMoreSpaces() {
+        String ts = "(?<ts>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})";
+        String tsPattern = "yyyy-MM-dd HH:mm:ss";
+        // 左詰め（後ろが空く）
+        String left = "2026-06-15 00:19:11 INFO  [main] com.example.Hoge - 開始";
+        assertNull(parse(new CustomLogFormat("l1", "l1",
+                "^" + ts + " (?<level>\\w+) \\[(?<thread>[^\\]]*)\\] (?<message>.*)$",
+                tsPattern), left), "空白 1 個では一致しない");
+        assertNotNull(parse(new CustomLogFormat("l2", "l2",
+                "^" + ts + " (?<level>\\w+) +\\[(?<thread>[^\\]]*)\\] (?<message>.*)$",
+                tsPattern), left), "空白 1 個以上なら読める");
+
+        // 右詰め（前が空く）
+        String right = "2026-06-15 00:19:11  INFO 12345 --- [main] c.e.Hoge : 開始";
+        assertNull(parse(new CustomLogFormat("r1", "r1",
+                "^" + ts + " (?<level>\\w+) \\d+ --- \\[(?<thread>[^\\]]*)\\] (?<message>.*)$",
+                tsPattern), right), "空白 1 個では一致しない");
+        assertNotNull(parse(new CustomLogFormat("r2", "r2",
+                "^" + ts + " +(?<level>\\w+) \\d+ --- \\[(?<thread>[^\\]]*)\\] (?<message>.*)$",
+                tsPattern), right), "空白 1 個以上なら読める");
+    }
+
     /** 一致しない行は継続行として扱えるよう null を返すこと。 */
     @Test
     void returnsNullForNonMatchingLine() {

@@ -22,6 +22,7 @@ const els = {
   logFormatSkipped: document.getElementById("log-format-skipped"),
   logFormatEditorTitle: document.getElementById("log-format-editor-title"),
   logFormatId: document.getElementById("log-format-id"),
+  logFormatIdNote: document.getElementById("log-format-id-note"),
   logFormatName: document.getElementById("log-format-name"),
   logFormatPattern: document.getElementById("log-format-pattern"),
   logFormatTimestamp: document.getElementById("log-format-timestamp"),
@@ -1523,22 +1524,37 @@ function setLogFormatResult(message, kind) {
   els.logFormatResult.className = message ? `log-format-result is-${kind}` : "log-format-result";
 }
 
+/**
+ * 編集中かどうかで id 欄とボタンの表示を切り替える。
+ *
+ * 保存は id での upsert なので、編集の途中で id を書き換えると上書きではなく
+ * 別の書式が増える（古いほうも残るので、上限 20 件を意図せず埋めてしまう）。
+ * 編集中は id を触らせないことで、この取り違えを起こさせない。
+ */
+function setLogFormatEditing(editing) {
+  els.logFormatId.readOnly = editing;
+  els.logFormatIdNote.hidden = !editing;
+  els.logFormatSave.textContent = editing ? "更新する" : "登録する";
+}
+
 function clearLogFormatEditor() {
   els.logFormatId.value = "";
   els.logFormatName.value = "";
   els.logFormatPattern.value = "";
   els.logFormatTimestamp.value = "";
   els.logFormatEditorTitle.textContent = "新しい書式を登録";
+  setLogFormatEditing(false);
   setLogFormatResult("", "info");
 }
 
-/** 既存の書式を編集欄へ読み込む（id をそのまま保存すると上書きになる）。 */
+/** 既存の書式を編集欄へ読み込む（id は固定され、保存すると上書きになる）。 */
 function editLogFormat(format) {
   els.logFormatId.value = format.id;
   els.logFormatName.value = format.name;
   els.logFormatPattern.value = format.pattern;
   els.logFormatTimestamp.value = format.timestamp;
   els.logFormatEditorTitle.textContent = `「${format.name}」を編集`;
+  setLogFormatEditing(true);
   setLogFormatResult("", "info");
   els.logFormatPattern.focus();
 }
@@ -1680,6 +1696,8 @@ async function saveLogFormat() {
     }
     setLogFormatResult(`「${data.name}」を登録しました。書式のプルダウンから選べます。`, "ok");
     els.logFormatEditorTitle.textContent = `「${data.name}」を編集`;
+    // 登録した直後はその書式の編集中。続けて保存しても同じ id を上書きする
+    setLogFormatEditing(true);
     await renderLogFormatList();
   } catch (e) {
     setLogFormatResult(e.message || "登録に失敗しました。", "error");
