@@ -541,7 +541,10 @@ function syncLogFormatSelect(data) {
   }
   const auto = els.logFormat.querySelector('option[value="auto"]');
   if (!auto) return;
-  if (data.log_format_auto && data.log_format_name) {
+  // 判定結果を添えるのは取り込みが終わったときだけ。log_format_name は取り込み前も
+  // 初期値（既定書式）が入っているので、条件を付けないと「まだ判定していないのに
+  // 既定書式が選ばれた」ように見える。
+  if (data.log_format_auto && data.log_format_name && data.load_status === "ready") {
     auto.textContent = `書式: 自動判定（${data.log_format_name}）`;
   } else {
     auto.textContent = "書式: 自動判定";

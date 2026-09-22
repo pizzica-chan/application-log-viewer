@@ -235,6 +235,35 @@ class CustomLogFormatTest {
     }
 
     /**
+     * 時刻を含まない書式でも、寄せ先の説明を出せること。
+     *
+     * <p>{@code yyyy/MM/dd} で解釈した結果は時刻を持たない。決め打ちで時まで読むと、
+     * 実在しない日を試した瞬間にその場で落ちる（取り込み側は正しく捨てるので、
+     * 試し打ちだけが壊れる）。
+     */
+    @Test
+    void timestampErrorWorksForDateOnlyPattern() {
+        CustomLogFormat dateOnly = new CustomLogFormat("date-only", "日付だけ",
+                "^(?<ts>\\d{4}/\\d{2}/\\d{2})$", "yyyy/MM/dd");
+        String why = dateOnly.timestampError("2026/02/31");
+        assertNotNull(why);
+        assertTrue(why.contains("実在しない"), why);
+        assertTrue(why.contains("2 月 28 日"), why);
+        assertNull(dateOnly.timestampError("2026/02/28"));
+        // 取り込み側も日付だけの書式で寄せを捨てる
+        assertNull(parse(dateOnly, "2026/02/31"));
+        assertNotNull(parse(dateOnly, "2026/02/28"));
+
+        // 時はあるが分が無い書式でも、同じ理由で落ちないこと
+        CustomLogFormat hourOnly = new CustomLogFormat("hour-only", "時まで",
+                "^(?<ts>\\d{4}/\\d{2}/\\d{2} \\d{2})$", "yyyy/MM/dd HH");
+        String hourWhy = hourOnly.timestampError("2026/02/31 05");
+        assertNotNull(hourWhy);
+        assertTrue(hourWhy.contains("2 月 28 日 5 時"), hourWhy);
+        assertNull(hourOnly.timestampError("2026/02/28 05"));
+    }
+
+    /**
      * 後戻りが爆発する正規表現を打ち切ること。
      * 打ち切らないと、取り込みが返らないままアプリが無反応になる。
      */

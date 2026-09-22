@@ -401,12 +401,33 @@ public final class CustomLogFormat {
                     + "（日付が無いと日をまたいで並べられません）";
         }
         if (wasAdjusted(ta, text)) {
-            return "実在しない日時です（" + ta.get(ChronoField.YEAR) + " 年 "
-                    + ta.get(ChronoField.MONTH_OF_YEAR) + " 月 "
-                    + ta.get(ChronoField.DAY_OF_MONTH) + " 日 "
-                    + ta.get(ChronoField.HOUR_OF_DAY) + " 時に寄せられます）";
+            return "実在しない日時です（" + resolvedText(ta) + "に寄せられます）";
         }
         return null;
+    }
+
+    /**
+     * 寄せられた先を、その書式が持っている項目だけで言い表す。
+     *
+     * <p>{@code yyyy/MM/dd} のように時刻を含まない書式では、解釈した結果も時刻を持たない。
+     * 決め打ちで時まで読むと、実在しない日を試したときにその場で落ちる。
+     *
+     * <p>分の確認は、いまの Java では外れない（{@code yyyy/MM/dd HH} のように時だけ
+     * 書いても、解釈側が時刻を組み立てるので分・秒まで付いてくる）。時と同じ壊れ方を
+     * 繰り返さないよう、念のため残してある。
+     */
+    private static String resolvedText(TemporalAccessor ta) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(ta.get(ChronoField.YEAR)).append(" 年 ")
+                .append(ta.get(ChronoField.MONTH_OF_YEAR)).append(" 月 ")
+                .append(ta.get(ChronoField.DAY_OF_MONTH)).append(" 日");
+        if (ta.isSupported(ChronoField.HOUR_OF_DAY)) {
+            sb.append(' ').append(ta.get(ChronoField.HOUR_OF_DAY)).append(" 時");
+            if (ta.isSupported(ChronoField.MINUTE_OF_HOUR)) {
+                sb.append(' ').append(ta.get(ChronoField.MINUTE_OF_HOUR)).append(" 分");
+            }
+        }
+        return sb.toString();
     }
 
     private static int field(TemporalAccessor ta, ChronoField f, int fallback) {
