@@ -698,3 +698,34 @@ mvn -q -f <一時ディレクトリ>/aplv-java/pom.xml package -DskipTests
 | grep 正規表現で UTF-8 デコーダと `CharBuffer` を使い回す | 1,250ms 前後に対して差がばらつきの範囲に収まった。時間の大半は正規表現の照合そのものとみられる |
 | 一覧の生ログを 4096 文字ぶんだけ読む | 200 件のページで約 20ms。通常のログでは効かない（数 MB の巨大エントリがあるときだけ効く） |
 | `scanAndFilter` の files との JOIN を外す | 全件走査で 265ms 対 226ms（30 ファイル・3 回の中央値）。grep 全体（約 0.45 秒）に対して小さく、一覧の SQL をすべて変えることになる |
+
+### 12.7 MyBatis-log-viewer への横展開
+
+mlv の `SqlQuery.scanWithJavaFilter` も同じ作りだった（行ごとに 17 列をすべて作ってから
+mapper / sql / parameters / thread / source を照合し、source もエントリごとに照合）。
+6 章の指針どおり、移植前に測ってから入れた。いま有効な数値は mlv の
+`SqlQuery.scanWithJavaFilter` のコメントにある。
+
+条件: 30 万エントリ・90 万行・165 MB の生成ログを 30 ファイルに分けたもの。
+Windows 11 / JDK 11、変更前後を交互に 5 回の中央値を 3 ラウンド取った中央値。
+
+| 条件 | 前 | 後 |
+|---|---|---|
+| mapper | 912ms | **334ms** |
+| sql | 1,011ms | **428ms** |
+| parameters | 872ms | **311ms** |
+| thread | 893ms | **295ms** |
+| mapper + grep | 987ms | **399ms** |
+| source（全ファイルに一致） | 887ms | **4ms** |
+| source（5 ファイルに一致） | 971ms | **14ms** |
+| source + mapper | 994ms | **69ms** |
+| source + sql_type | 444ms | **12ms** |
+| grep（リテラル） | 442ms | 454ms（差はない） |
+
+変更前の jar と同じ索引に対し、12 通りの条件 × 3 つのページ位置で行の id・全列・生ログの
+ハッシュが一致することを確認した。
+
+mlv の試験 `sqlPushdownMatchesJavaScan` は「常に真になる source 正規表現」を足して
+走査経路を強制していた。source を押し下げると両方とも SQL 経路を通り、試験が黙って
+意味を失うため、空の thread 正規表現に差し替えた（元に戻すと `needsJavaFilter` の
+確認で落ちることを確かめてある）。
