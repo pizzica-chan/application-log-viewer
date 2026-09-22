@@ -1355,13 +1355,6 @@ dialog pre {
 }
 
 /* 旧 class 名（互換）。新規は log-format-guide-subhead を使う */
-.log-format-parts-label {
-  margin: 0.65rem 0 0.3rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--text);
-}
-
 .log-format-parts {
   display: flex;
   flex-wrap: wrap;
