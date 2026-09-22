@@ -379,10 +379,10 @@ public final class SessionTrace {
      * {@code excludes} はどれか 1 行でも一致したら落とす。
      *
      * <p>スタックトレースを含む本文は元ファイルから読むので、結論が出た時点で読むのをやめる。
-     * {@code excludes} が無ければ最初の一致で、{@code contains} が無ければ全行を見ずに済む。
+     * {@code excludes} がなければ最初の一致で、{@code contains} がなければ全行を見ずに済む。
      *
      * <p>見るのは {@link #MAX_ROWS_PER_REQUEST} で切ったあとのエントリだけ。切り落とした
-     * 後ろにしか語が無いリクエストは、{@code contains} では残らず、{@code excludes} では
+     * 後ろにしか語がないリクエストは、{@code contains} では残らず、{@code excludes} では
      * 落ちない。1 リクエストが上限を超えたときだけの話なので、判定を合わせるために
      * 上限の先まで読み直すことはしない（画面の制限事項に明記している）。
      */
@@ -395,7 +395,7 @@ public final class SessionTrace {
             return false; // 一度でも除外条件に該当したら、行が増えても覆らない
         }
         if (excludesRe == null && req.containsHit) {
-            return true; // 除外を見る必要が無く、既に含む条件を満たしている
+            return true; // 除外を見る必要がなく、既に含む条件を満たしている
         }
         // 前に見たところから先だけを読む。時間窓モードでは継ぎ足しのたびにここへ来るので、
         // 毎回すべての行を読み直すと、1 リクエストが育つほど読み出しが増えてしまう。
@@ -592,7 +592,7 @@ public final class SessionTrace {
         fetchWindowRows(conn, req, anchor, anchor.tsMillis, anchor.tsMillis + windowMillis,
                 Math.max(floorLine, anchor.lineNo - 1));
         if (req.entries.isEmpty()) {
-            req.entries.add(anchor); // 取れないことは無いはずだが、起点だけは必ず残す
+            req.entries.add(anchor); // 取れないことはないはずだが、起点だけは必ず残す
         }
         return req;
     }

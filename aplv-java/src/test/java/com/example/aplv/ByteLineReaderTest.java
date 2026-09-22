@@ -45,7 +45,7 @@ class ByteLineReaderTest {
         assertEquals("a\nb\nc\n", readAll("a\nb\nc\n"));
     }
 
-    /** ファイル末尾に改行が無くても最終行が返されること。 */
+    /** ファイル末尾に改行がなくても最終行が返されること。 */
     @Test
     void readsFinalLineWithoutTrailingNewline() throws IOException {
         assertEquals("only", readAll("only"));

@@ -153,7 +153,7 @@ class LogParserTest {
         assertEquals("", p.message);
     }
 
-    /** 固定区切り {@code ] - } が無い行は拒否されること。 */
+    /** 固定区切り {@code ] - } がない行は拒否されること。 */
     @Test
     void rejectsMissingFieldSeparator() {
         assertNull(LogParser.parseLine("2026-06-15 00:00:00.000[main][INFO][com.example.X] msg"));
@@ -234,9 +234,9 @@ class LogParserTest {
      * スレッド判定の事前ふるいが、正規表現をそのまま呼んだ場合と同じ結果になること。
      *
      * <p>{@code THREAD_HINT} は {@code ^main(?:$|:)} 以外のすべての選択肢が {@code '-'} を含むため、
-     * {@code '-'} が無く "main" でも始まらない文字列は正規表現を呼ばずに不一致と判定している。
+     * {@code '-'} がなく "main" でも始まらない文字列は正規表現を呼ばずに不一致と判定している。
      * その境界（main の大小文字、4 文字未満、ハイフンはあるが一致しない、
-     * ハイフンが無い FQCN）で判定が変わらないことを確認する。
+     * ハイフンがない FQCN）で判定が変わらないことを確認する。
      */
     @Test
     void threadHintPrefilterMatchesRegex() {
@@ -255,7 +255,7 @@ class LogParserTest {
         assertEquals("MAIN:worker-3", upper.thread);
         assertEquals("com.example.Boot", upper.logger);
 
-        // '-' が無く大文字で始まるスレッド名。事前ふるいの regionMatches(true, ...) を
+        // '-' がなく大文字で始まるスレッド名。事前ふるいの regionMatches(true, ...) を
         // 通る唯一の経路で、大小文字を無視しないと thread と logger が入れ替わる
         LogParser.ParsedLine upperNoHyphen = LogParser.parseLine(
                 "2026-06-15 00:00:01.000[Boot][INFO][MAIN] - x");

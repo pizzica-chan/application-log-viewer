@@ -514,7 +514,7 @@ class LogIndexTest {
     }
 
     /**
-     * 正規表現・grep が無いときの SQL 押し下げ経路（COUNT + LIMIT/OFFSET）が、
+     * 正規表現・grep がないときの SQL 押し下げ経路（COUNT + LIMIT/OFFSET）が、
      * 全件走査経路と同じ件数・並び・ページ境界を返すこと。
      */
     @Test
@@ -547,7 +547,7 @@ class LogIndexTest {
 
     /**
      * grep 経路では判定に使った生テキストを {@link LogIndex.EntryRow#raw} に残し、
-     * 一覧 API が同じ内容を読み直さずに済むこと（grep 無しでは設定しない）。
+     * 一覧 API が同じ内容を読み直さずに済むこと（grep なしでは設定しない）。
      */
     @Test
     void grepKeepsRawForPageRows(@TempDir Path tmp) throws Exception {
@@ -575,7 +575,7 @@ class LogIndexTest {
             assertEquals(reread, e.raw.trim());
 
             LogQuery.Result noGrep = LogQuery.queryLogs(conn, new QueryFilter(), 0, 10);
-            assertNull(noGrep.page.get(0).raw, "grep 無しでは raw を読まないこと");
+            assertNull(noGrep.page.get(0).raw, "grep なしでは raw を読まないこと");
         }
     }
 
@@ -674,7 +674,7 @@ class LogIndexTest {
      * 索引の張り直しが途中で失敗しても、レベル絞り込みに効く索引が消えないこと。
      *
      * <p>DDL は文ごとに確定するため、削除を作成より先に置くと CREATE が失敗した時点で
-     * 「level に効く索引が一つも無い」状態が残ってしまう。
+     * 「level に効く索引が一つもない」状態が残ってしまう。
      */
     @Test
     void ensureIndexesKeepsLevelIndexWhenCreateFails(@TempDir Path tmp) throws Exception {
@@ -705,7 +705,7 @@ class LogIndexTest {
     /**
      * 取込を確定した後で索引作成に失敗しても、entries を残さず後始末すること。
      *
-     * <p>ここを素通りすると数百 MB の行が fingerprint 無しで DB に残る。
+     * <p>ここを素通りすると数百 MB の行が fingerprint なしで DB に残る。
      * 他の失敗経路と同じく、次回に再構築される状態へ戻す必要がある。
      */
     @Test

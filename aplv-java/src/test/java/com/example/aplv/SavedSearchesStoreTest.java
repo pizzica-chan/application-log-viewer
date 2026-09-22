@@ -150,7 +150,7 @@ class SavedSearchesStoreTest {
         assertFalse(store().delete(saved.id));
     }
 
-    /** ファイルが無いときは空一覧で、例外にしないこと。 */
+    /** ファイルがないときは空一覧で、例外にしないこと。 */
     @Test
     void missingFileIsEmpty() throws IOException {
         assertTrue(store().list().isEmpty());

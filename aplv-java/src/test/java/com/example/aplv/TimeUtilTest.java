@@ -95,7 +95,7 @@ class TimeUtilTest {
      * 存在しない日時を繰り上げて受理しないこと。
      *
      * <p>toMillis は暦を検証せず 2025-13-45 を 2026-02-14 として扱うため、
-     * 検証が無いと打ち間違いが別の期間の検索結果として黙って返ってしまう。
+     * 検証がないと打ち間違いが別の期間の検索結果として黙って返ってしまう。
      */
     @Test
     void parseUiDatetimeRejectsNonExistentDates() {

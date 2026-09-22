@@ -160,7 +160,7 @@ public final class SavedSearchesStore {
         }
     }
 
-    /** 指定 id を削除する。無ければ {@code false}。 */
+    /** 指定 id を削除する。なければ {@code false}。 */
     public boolean delete(String id) throws IOException {
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("id を指定してください");
@@ -341,7 +341,7 @@ public final class SavedSearchesStore {
             return;
         } catch (IOException e) {
             // ふつうの移動も置き換えなので同じ理由で失敗する。最後は元のファイルへ直接書く
-            // （途中で落ちると壊れうるが、ここまで来たら他に手が無い）。
+            // （途中で落ちると壊れうるが、ここまで来たら他に手がない）。
             writeInPlace(bytes, tmp, e);
         }
     }

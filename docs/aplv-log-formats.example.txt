@@ -8,7 +8,7 @@
 #
 # 必須は pattern と timestamp。name を省くと id をそのまま名前に使います。
 # 取り出せる項目は名前付きグループで、ts だけが必須です
-# （level / thread / logger / message は任意。無ければ空欄になります）。
+# （level / thread / logger / message は任意。なければ空欄になります）。
 
 # 2026/06/15 00:19:11.705 INFO (main) com.example.Hoge : 処理を開始します
 [my-app]

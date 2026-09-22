@@ -30,7 +30,7 @@ import java.util.regex.PatternSyntaxException;
  *
  * <p>取り出すのは名前付きグループで、{@code ts} だけが必須。
  * {@code level} / {@code thread} / {@code logger} / {@code message} は任意で、
- * 無ければ空文字になる。レベルは組み込み書式と違って語の検査をせず、取り出した値を
+ * なければ空文字になる。レベルは組み込み書式と違って語の検査をせず、取り出した値を
  * そのまま採る（{@code NOTICE} でも {@code 警告} でも通る）。ただし絞り込みの比較を
  * 揃えるため、組み込み書式と同じく ASCII の範囲で大文字に直す（{@code info} → {@code INFO}）。
  *
@@ -67,7 +67,7 @@ public final class CustomLogFormat {
 
     /**
      * @throws IllegalArgumentException 正規表現・日時書式が壊れている、
-     *                                  または {@code ts} グループが無い場合
+     *                                  または {@code ts} グループがない場合
      */
     CustomLogFormat(String id, String name, String patternText, String timestampPattern) {
         this.id = id;
@@ -101,7 +101,7 @@ public final class CustomLogFormat {
     /**
      * パターン文字列から、名前付きグループの名前を集める。
      *
-     * <p>Java 8 の {@link Matcher} には名前の一覧を得る公開 API が無く、マッチしていない
+     * <p>Java 8 の {@link Matcher} には名前の一覧を得る公開 API がなく、マッチしていない
      * 状態で {@code group(name)} を呼ぶと、名前の有無にかかわらず
      * {@link IllegalStateException} になる（存在確認より先に投げられる）。そのため
      * パターン文字列を自分で走査する。
@@ -454,7 +454,7 @@ public final class CustomLogFormat {
         if (!ta.isSupported(ChronoField.YEAR) || !ta.isSupported(ChronoField.MONTH_OF_YEAR)
                 || !ta.isSupported(ChronoField.DAY_OF_MONTH)) {
             return "日時書式「" + timestampPattern + "」に年月日が揃っていません"
-                    + "（日付が無いと日をまたいで並べられません）";
+                    + "（日付がないと日をまたいで並べられません）";
         }
         if (wasAdjusted(ta, text)) {
             return "実在しない日時です（" + resolvedText(ta) + "に寄せられます）";

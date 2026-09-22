@@ -375,7 +375,7 @@ public final class LogParser {
      *
      * <p>{@code +09:00} / {@code +0900} / {@code Z} に対応する。値は使わない
      * （{@link #isBodyStart} の説明のとおり、書かれた暦の値をそのまま扱うため）。
-     * オフセットが無ければ {@code from} をそのまま返す。
+     * オフセットがなければ {@code from} をそのまま返す。
      */
     private static int skipZoneOffset(byte[] b, int from, int end) {
         if (from >= end) {
@@ -414,7 +414,7 @@ public final class LogParser {
      * </pre>
      *
      * <p>ロガーは {@code クラス名.メソッド名} で空白を含まないため、ロガーとメッセージは
-     * 空白 1 つで分かれる。他の書式のような {@code " - "} の区切りは無い。
+     * 空白 1 つで分かれる。他の書式のような {@code " - "} の区切りはない。
      */
     private static ParsedLine parseJuliRest(long ts, String rest) {
         int i = skipSpaces(rest, 0);
@@ -441,7 +441,7 @@ public final class LogParser {
             return null;
         }
         String logger = rest.substring(loggerStart, loggerEnd);
-        // メッセージは空のこともある（区切りの空白すら無い場合を含む）。
+        // メッセージは空のこともある（区切りの空白すらない場合を含む）。
         String message = loggerEnd >= rest.length() ? "" : rest.substring(loggerEnd + 1);
         return new ParsedLine(ts, logger, level, thread, message);
     }
@@ -467,7 +467,7 @@ public final class LogParser {
      * {@link #THREAD_HINT} に一致するか。正規表現を呼ぶ前に安い条件でふるい落とす。
      *
      * <p>{@code ^main(?:$|:)} 以外の選択肢はすべて {@code '-'} を必ず含むため、{@code '-'} が
-     * 無く "main" でも始まらない文字列はどの選択肢にも一致しえない。ログ行の 1 つは
+     * なく "main" でも始まらない文字列はどの選択肢にも一致しえない。ログ行の 1 つは
      * FQCN の logger ではほぼ必ずこの形式に該当するため、失敗すると分かっている走査を丸ごと省ける。
      *
      * <p>ふるいは「一致しうるか」だけを見る必要条件で、通す側には緩い。

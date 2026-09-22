@@ -168,7 +168,7 @@ public final class LogIndex {
     }
 
     /**
-     * 参照に必要な索引を用意する（無ければ作る）。
+     * 参照に必要な索引を用意する（なければ作る）。
      *
      * <p>{@code idx_entries_level_ts} は先頭列が {@code level} なので、レベル等価条件では
      * {@code idx_entries_level} の代わりになり、しかも時系列の並びをそのまま辿れる。
@@ -176,7 +176,7 @@ public final class LogIndex {
      * 並べ直しが入って遅くなることがあるため削除する。
      *
      * <p>DDL は文ごとに確定するため、削除は作成をすべて終えてから行う。逆順だと
-     * {@code CREATE} が失敗したときに level に効く索引が一つも無い状態が残ってしまう。
+     * {@code CREATE} が失敗したときに level に効く索引が一つもない状態が残ってしまう。
      * 逆に削除だけが失敗すると両方が残り、複数レベル指定で幅の狭い方が選ばれて
      * 遅くなることがあるが、結果は正しいままで次回の成功時に解消する。
      */
@@ -202,7 +202,7 @@ public final class LogIndex {
     /**
      * 索引の統計（{@code sqlite_stat1}）を更新する。
      *
-     * <p>統計が無いと SQLite は列の選択度を知らず、レベル絞り込みで
+     * <p>統計がないと SQLite は列の選択度を知らず、レベル絞り込みで
      * {@code idx_entries_level_ts} ではなく {@code idx_entries_ts} の全走査を選ぶことがある。
      *
      * <p>サンプリング（{@link #ANALYSIS_LIMIT}）のため行数に関係なく数十ミリ秒で終わる。
@@ -214,7 +214,7 @@ public final class LogIndex {
             st.execute("PRAGMA analysis_limit = " + ANALYSIS_LIMIT);
             st.execute("ANALYZE");
         } catch (SQLException e) {
-            // 統計が無くても結果は正しい（遅くなるだけ）ので無視する
+            // 統計がなくても結果は正しい（遅くなるだけ）ので無視する
         }
     }
 
@@ -255,7 +255,7 @@ public final class LogIndex {
         try (Statement st = conn.createStatement()) {
             st.execute("DROP TABLE IF EXISTS entries_fts");
         } catch (SQLException e) {
-            // 削除失敗は無視（テーブルが無い場合など）
+            // 削除失敗は無視（テーブルがない場合など）
         }
     }
 

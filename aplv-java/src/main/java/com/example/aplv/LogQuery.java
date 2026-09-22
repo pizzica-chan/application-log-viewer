@@ -20,7 +20,7 @@ import com.example.aplv.LogIndex.EntryRow;
  * message / source）は DB 列だけで先に評価し、grep 指定時のみ通過行の
  * 生ログを byte 範囲から読み出す（不要なディスク I/O を省略）。
  *
- * <p>正規表現・grep がいずれも未指定なら Java 側で判定するものが無いため、件数と 1 ページ分を
+ * <p>正規表現・grep がいずれも未指定なら Java 側で判定するものがないため、件数と 1 ページ分を
  * まるごと SQL（{@code COUNT(*)} と {@code LIMIT/OFFSET}）に任せ、全ヒットを {@link EntryRow}
  * に起こして数え上げる処理を省く。日時のみで絞り込む場合は {@code idx_entries_ts} を
  * 並び順どおりに辿れるため、ページ送りは表示件数に比例した時間で返る。
@@ -182,7 +182,7 @@ public final class LogQuery {
             QueryFilter filter, long offset, long limit) throws SQLException {
         boolean needsRaw = filter.needsRaw();
         boolean needsColumns = needsRegexColumns(filter);
-        // メタ文字が無ければ「部分一致」なので、正規表現を通さずバイト列で探せる
+        // メタ文字がなければ「部分一致」なので、正規表現を通さずバイト列で探せる
         byte[] literal = needsRaw && filter.grepText != null && hasNoRegexMeta(filter.grepText)
                 ? LogIndex.toLowerAscii(filter.grepText.getBytes(StandardCharsets.UTF_8))
                 : null;

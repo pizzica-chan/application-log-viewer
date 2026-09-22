@@ -39,7 +39,7 @@ public final class ByteLineReader implements Closeable {
     /**
      * 次の行を読み出す。
      *
-     * @return EOF に達して読む行が無ければ {@code false}
+     * @return EOF に達して読む行がなければ {@code false}
      */
     public boolean next() throws IOException {
         if (bufPos >= bufLen && !fill()) {

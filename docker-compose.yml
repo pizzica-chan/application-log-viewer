@@ -14,7 +14,7 @@ services:
       - ${APLV_LOG_DIR:-./samples}:/app/logs/samples:ro
       # SQLite インデックスの永続化（2 回目以降の起動を高速化）
       - ./tmp:/app/tmp
-      # 検索条件。無いと Docker がディレクトリを作るので、起動スクリプトが空ファイルを用意する
+      # 検索条件。ないと Docker がディレクトリを作るので、起動スクリプトが空ファイルを用意する
       - ./aplv-saved-searches.json:/app/aplv-saved-searches.json
       # 利用者定義のログ書式。同じく起動スクリプトが空ファイルを用意する
       - ./aplv-log-formats.txt:/app/aplv-log-formats.txt

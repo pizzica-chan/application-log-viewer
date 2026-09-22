@@ -78,7 +78,7 @@ public final class LogFormatSpec {
     }
 
     /**
-     * id から引く。組み込みを先に探し、無ければ利用者定義から探す。
+     * id から引く。組み込みを先に探し、なければ利用者定義から探す。
      * 未知の id は {@code null}。
      */
     public static LogFormatSpec byId(String id, List<CustomLogFormat> customs) {

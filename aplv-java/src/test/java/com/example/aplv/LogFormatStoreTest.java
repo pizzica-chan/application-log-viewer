@@ -53,7 +53,7 @@ class LogFormatStoreTest {
 
     /**
      * README が案内する設定例が、実際に読めて実際に解析できること。
-     * 例が動かないと、書式を書き始める取っかかりが無くなる。
+     * 例が動かないと、書式を書き始める取っかかりがなくなる。
      */
     @Test
     void exampleFileInDocsWorks() throws IOException {
@@ -202,7 +202,7 @@ class LogFormatStoreTest {
                 "書き込み後はキャッシュを捨てて読み直す");
     }
 
-    /** 削除できること。無い id は false。 */
+    /** 削除できること。ない id は false。 */
     @Test
     void deletesFormat(@TempDir Path tmp) throws IOException {
         LogFormatStore store = new LogFormatStore(tmp.resolve(LogFormatStore.FILE_NAME));
@@ -219,7 +219,7 @@ class LogFormatStoreTest {
     @Test
     void upsertRejectsBrokenFormat(@TempDir Path tmp) throws IOException {
         LogFormatStore store = new LogFormatStore(tmp.resolve(LogFormatStore.FILE_NAME));
-        // ts グループが無い
+        // ts グループがない
         assertThrows(IllegalArgumentException.class,
                 () -> store.upsert("x", "x", "^(?<level>\\w+)$", "yyyy"));
         // 正規表現が壊れている
@@ -238,7 +238,7 @@ class LogFormatStoreTest {
      * 読み飛ばしたものがあるファイルには書き戻さないこと。
      *
      * <p>書き戻せるのは読めた書式だけなので、壊れた節は行番号ごと消える。消えるのは
-     * 「直さなければならないもの」そのもので、直す材料が先に無くなってしまう。
+     * 「直さなければならないもの」そのもので、直す材料が先になくなってしまう。
      */
     @Test
     void refusesToWriteBackWhenSomethingWasSkipped(@TempDir Path tmp) throws IOException {
@@ -301,7 +301,7 @@ class LogFormatStoreTest {
         assertArrayEquals(before, Files.readAllBytes(file));
     }
 
-    /** ファイルが無ければ空。書式を登録するまでファイルは作らない。 */
+    /** ファイルがなければ空。書式を登録するまでファイルは作らない。 */
     @Test
     void returnsEmptyWhenFileMissing(@TempDir Path tmp) throws IOException {
         Path file = tmp.resolve(LogFormatStore.FILE_NAME);
@@ -402,7 +402,7 @@ class LogFormatStoreTest {
      */
     @Test
     void oneBadLineDoesNotBreakTheRest(@TempDir Path tmp) throws IOException {
-        Path file = write(tmp, "イコールも角括弧も無いただの行\n"
+        Path file = write(tmp, "イコールも角括弧もないただの行\n"
                 + "これは = があるが [id] より前\n"
                 + "pattern = [id] より前に書かれた行\n"
                 + oneFormat("my-app")
@@ -416,7 +416,7 @@ class LogFormatStoreTest {
         assertEquals("later", loaded.items.get(1).id());
         assertEquals(0, loaded.skippedFormats, "書式そのものは 2 件とも読めている");
         assertEquals(4, loaded.skippedLines,
-                "読み飛ばしたのは行のほう（= が無い行・[id] より前の 2 行・知らないキー）");
+                "読み飛ばしたのは行のほう（= がない行・[id] より前の 2 行・知らないキー）");
     }
 
     /** コメントと空行は無視し、値の途中の # はただの文字として扱うこと。 */

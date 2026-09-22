@@ -25,7 +25,7 @@ import java.util.Set;
  * <p>ここに入るのは<strong>正規表現</strong>で、{@code \} を大量に含む。JSON だと
  * {@code \d} を {@code "\\d"} と書かねばならず、画面に入れた文字列とファイル上の文字列が
  * 食い違う。「画面では {@code \d}、ファイルでは {@code \\d}」という説明を利用者に
- * 強いることになるため、<strong>エスケープの無い行指向の形式</strong>にしている。
+ * 強いることになるため、<strong>エスケープのない行指向の形式</strong>にしている。
  * 値は書いたとおりに読む。
  *
  * <p>ファイルの形:
@@ -129,7 +129,7 @@ public final class LogFormatStore {
     }
 
     /**
-     * ファイルを読んで書式の一覧を返す。ファイルが無ければ空（ファイルは作らない）。
+     * ファイルを読んで書式の一覧を返す。ファイルがなければ空（ファイルは作らない）。
      *
      * <p>ファイルを直してから画面で読み込み直せば、サーバを起動し直さずに新しい書式を
      * 試せる。そのために毎回ファイルの状態を見るが、<strong>mtime とサイズが前回と
@@ -398,7 +398,7 @@ public final class LogFormatStore {
     }
 
     /**
-     * 同じ id があれば置き換え、無ければ追加する。
+     * 同じ id があれば置き換え、なければ追加する。
      *
      * <p>値の検査は {@link #create} が行う。壊れた書式は<strong>保存する前に</strong>弾く
      * （読むときだけ弾くと、画面では登録できたのに一覧に出てこない状態になる）。
@@ -433,7 +433,7 @@ public final class LogFormatStore {
         }
     }
 
-    /** 指定 id を消す。無ければ {@code false}。 */
+    /** 指定 id を消す。なければ {@code false}。 */
     public boolean delete(String id) throws IOException {
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("id を指定してください");

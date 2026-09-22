@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
  * 利用者定義書式（正規表現）の解析。
  *
  * <ul>
- *   <li>名前付きグループの取り出しと、任意グループが無いときの既定値</li>
+ *   <li>名前付きグループの取り出しと、任意グループがないときの既定値</li>
  *   <li>時刻の解釈が組み込み書式と一致すること（同じログを別書式で読んでもずれない）</li>
  *   <li>暴走する正規表現を打ち切ること（取り込みが返らなくなるのを防ぐ）</li>
  *   <li>定義そのものが壊れているときに、作る時点で弾くこと</li>
@@ -73,7 +73,7 @@ class CustomLogFormatTest {
         assertEquals(builtin.tsMillis, custom.tsMillis);
     }
 
-    /** 任意グループが無い書式でも使えて、欠けた項目は空文字になること。 */
+    /** 任意グループがない書式でも使えて、欠けた項目は空文字になること。 */
     @Test
     void optionalGroupsDefaultToEmpty() {
         CustomLogFormat f = new CustomLogFormat("ts-only", "時刻だけ",
@@ -100,7 +100,7 @@ class CustomLogFormatTest {
      *
      * <p>素直な {@code [^\]]*} は最初の {@code ]} で止まるため、
      * {@code [pool-1[worker-3]]} のようなスレッド名には行ごと一致しない。
-     * 入れ子が無い行にも同じ部品が使えることまで確かめる。
+     * 入れ子がない行にも同じ部品が使えることまで確かめる。
      */
     @Test
     void nestedBracketPartMatchesBothShapes() {
@@ -111,7 +111,7 @@ class CustomLogFormatTest {
         assertNotNull(deep, "入れ子のある行に一致する");
         assertEquals("pool-1[worker-3]", deep.thread);
         LogParser.ParsedLine flat = parse(f, "2026/06/15 [main] 開始");
-        assertNotNull(flat, "入れ子の無い行にも同じ部品が使える");
+        assertNotNull(flat, "入れ子のない行にも同じ部品が使える");
         assertEquals("main", flat.thread);
 
         // 素直な部品では、入れ子のある行は行ごと一致しない（部品を分けている理由）
@@ -284,7 +284,7 @@ class CustomLogFormatTest {
         assertNull(parse(dateOnly, "2026/02/31"));
         assertNotNull(parse(dateOnly, "2026/02/28"));
 
-        // 時はあるが分が無い書式でも、同じ理由で落ちないこと
+        // 時はあるが分がない書式でも、同じ理由で落ちないこと
         CustomLogFormat hourOnly = new CustomLogFormat("hour-only", "時まで",
                 "^(?<ts>\\d{4}/\\d{2}/\\d{2} \\d{2})$", "yyyy/MM/dd HH");
         String hourWhy = hourOnly.timestampError("2026/02/31 05");
@@ -389,7 +389,7 @@ class CustomLogFormatTest {
     /**
      * 閉じていない {@code \Q} は、そこから後ろが<strong>すべてただの文字</strong>になること。
      *
-     * <p>Java は {@code \E} が無ければパターンの終わりまで引用を続ける。途中で打ち切って
+     * <p>Java は {@code \E} がなければパターンの終わりまで引用を続ける。途中で打ち切って
      * 走査を再開すると、引用された {@code (?<level>} をグループと数えてしまい、
      * 解析のたびに落ちる。
      */
@@ -428,7 +428,7 @@ class CustomLogFormatTest {
      *
      * <p>{@code (?x)} を付けると {@code #} から行末までが正規表現のコメントになり、
      * Java はその中の {@code (?<level>} をグループとして扱わない。こちらの走査は
-     * コメントを知らないので「ある」と数えてしまう。この取りこぼしまで無くすのは
+     * コメントを知らないので「ある」と数えてしまう。この取りこぼしまでなくすのは
      * 正規表現の構文解析をもう 1 つ持つことになるので、<strong>取りこぼしても
      * どの書式が原因か分かる形で失敗させる</strong>ほうを選んでいる。
      * 素の {@link IllegalArgumentException} が出ると、取り込みも自動判定も
@@ -489,7 +489,7 @@ class CustomLogFormatTest {
                 () -> f.matchedGroups(line.toString()));
     }
 
-    /** ts グループが無い書式は作れないこと（時刻が無いと索引に入れられない）。 */
+    /** ts グループがない書式は作れないこと（時刻がないと索引に入れられない）。 */
     @Test
     void requiresTimestampGroup() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,

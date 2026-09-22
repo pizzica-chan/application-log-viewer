@@ -30,8 +30,8 @@ import com.example.aplv.SessionTrace.Request;
  * <ul>
  *   <li>同一ファイル・同一スレッドの「はじまり〜おわり」を 1 リクエストとしてまとめ、
  *       他スレッド・他セッションのログを混ぜない</li>
- *   <li>おわりが無いときは次のはじまりの直前、または最大所要時間で打ち切る</li>
- *   <li>はじまりが無くてもおわりで閉じていればリクエストとし、どちらも囲まない行は単独にする</li>
+ *   <li>おわりがないときは次のはじまりの直前、または最大所要時間で打ち切る</li>
+ *   <li>はじまりがなくてもおわりで閉じていればリクエストとし、どちらも囲まない行は単独にする</li>
  *   <li>識別子は正規表現ではなく文字列として、大文字小文字を区別して照合する</li>
  *   <li>FTS5 の有無で結果が変わらない</li>
  *   <li>同一ミリ秒の行が並んでも、ファイル内の行順で範囲を決める</li>
@@ -133,7 +133,7 @@ class SessionTraceTest {
             assertEquals("http-nio-8080-exec-1", e.thread);
         }
 
-        // 4. 識別子がスタックトレースにしか無いリクエスト。非同期スレッド（task-1）は含まない。
+        // 4. 識別子がスタックトレースにしかないリクエスト。非同期スレッド（task-1）は含まない。
         Request order = r.requests.get(3);
         assertEquals("http-nio-8080-exec-2", order.thread);
         assertEquals(EndReason.END, order.endReason);
@@ -154,7 +154,7 @@ class SessionTraceTest {
         assertEquals(EndReason.STANDALONE, listener.endReason);
         assertEquals(1, listener.entries.size());
 
-        // 7. ファイル末尾までおわりが無い
+        // 7. ファイル末尾までおわりがない
         Request login = r.requests.get(6);
         assertEquals("http-nio-8080-exec-5", login.thread);
         assertEquals(EndReason.NOT_FOUND, login.endReason);
@@ -186,13 +186,13 @@ class SessionTraceTest {
     }
 
     /**
-     * リクエスト単位の絞り込み。スタックトレースの中にしか無い語でも絞れること、
+     * リクエスト単位の絞り込み。スタックトレースの中にしかない語でも絞れること、
      * 除外が優先されること、落とした件数を数えること。
      */
     @Test
     void filtersRequestsByContainsAndExcludes(@TempDir Path tmp) throws Exception {
         List<Path> logs = sampleLogs();
-        // スタックトレースにしか無い例外クラス名で 1 リクエストに絞れる（全 7 件のうち 1 件）
+        // スタックトレースにしかない例外クラス名で 1 リクエストに絞れる（全 7 件のうち 1 件）
         SessionTrace.Result only = runFiltered(tmp.resolve("a"), logs, "PaymentException", null);
         assertEquals(1, only.requests.size());
         assertEquals(6, only.filteredOut);
@@ -210,7 +210,7 @@ class SessionTraceTest {
         // 両方指定すると、含む条件を満たしても除外条件に該当すれば落ちる
         SessionTrace.Result both =
                 runFiltered(tmp.resolve("c"), logs, "リクエスト開始", "PaymentException");
-        // はじまりの行を持つのは 5 件（「はじまり不明」と「単独の行」には無い）。そこから 1 件除く
+        // はじまりの行を持つのは 5 件（「はじまり不明」と「単独の行」にはない）。そこから 1 件除く
         assertEquals(4, both.requests.size());
         for (Request r : both.requests) {
             assertTrue(messages(r).get(0).startsWith("リクエスト開始"));
@@ -365,7 +365,7 @@ class SessionTraceTest {
     void clusterSampleFilters(@TempDir Path tmp) throws Exception {
         String sid = "D41B8E2F5A7C4903";
         List<Path> logs = clusterLogs();
-        // スタックトレースにしか無い例外クラス名で、失敗した注文の 1 リクエストだけ残る
+        // スタックトレースにしかない例外クラス名で、失敗した注文の 1 リクエストだけ残る
         SessionTrace.Result only = runFiltered(tmp.resolve("a"), logs, sid, "PaymentException", null);
         assertEquals(1, only.requests.size());
         assertEquals(14, only.filteredOut);
@@ -454,7 +454,7 @@ class SessionTraceTest {
     /** 継ぎ足しで増えた行に除外の語が出たら、そのリクエストを落とし直すこと。 */
     @Test
     void windowModeReappliesFilterAfterChaining(@TempDir Path tmp) throws Exception {
-        // 1 つ目の窓（5〜15 秒）には除外の語が無く、2 つ目の起点で窓が 19 秒まで伸びてから
+        // 1 つ目の窓（5〜15 秒）には除外の語がなく、2 つ目の起点で窓が 19 秒まで伸びてから
         // 17 秒の行が入る。継ぎ足しのあとに判定し直さないと、落とせないまま残る。
         String content = line("10:00:10.000", "exec-1", "id=" + SID + " 1 回目")
                 + line("10:00:14.000", "exec-1", "id=" + SID + " 2 回目")
@@ -472,7 +472,7 @@ class SessionTraceTest {
     /** 継ぎ足しで増えた行に「含む」の語が出たら、落としたリクエストを拾い直すこと。 */
     @Test
     void windowModeRecoversRequestWhenContainsAppears(@TempDir Path tmp) throws Exception {
-        // 1 つ目の窓には無く、継ぎ足しで入ってくる行にだけ「含む」の語がある
+        // 1 つ目の窓にはなく、継ぎ足しで入ってくる行にだけ「含む」の語がある
         String content = line("10:00:10.000", "exec-1", "id=" + SID + " 1 回目")
                 + line("10:00:14.000", "exec-1", "id=" + SID + " 2 回目")
                 + line("10:00:17.000", "exec-1", "あとから出る語 OK");
@@ -757,7 +757,7 @@ class SessionTraceTest {
     }
 
     /**
-     * おわりが無いリクエストは最大所要時間で打ち切り、それより後の行を取り込まないこと。
+     * おわりがないリクエストは最大所要時間で打ち切り、それより後の行を取り込まないこと。
      * 所要時間は起点ではなく、はじまりの時刻から数える（起点から数えると 10:15 まで取り込む）。
      */
     @Test
@@ -959,7 +959,7 @@ class SessionTraceTest {
     /** 単独の行の範囲にも重ねないこと（遡りはその手前で止まる）。 */
     @Test
     void doesNotOverlapPreviousStandalone(@TempDir Path tmp) throws Exception {
-        // 1 つ目の起点は、10 分の窓（〜10:10）におわりが無いので単独の行になる。
+        // 1 つ目の起点は、10 分の窓（〜10:10）におわりがないので単独の行になる。
         // 2 つ目の起点（10:09）は 10:12 のおわりで閉じるが、遡る窓（9:59〜）に入っている
         // 1 つ目の行を取り込まない。
         String content = line("10:00:00.000", "exec-1", "id=" + SID + " 1")
