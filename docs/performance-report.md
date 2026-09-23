@@ -660,7 +660,7 @@ mvn -q -f <一時ディレクトリ>/aplv-java/pom.xml package -DskipTests
 | 変更 | 内容 |
 |---|---|
 | source の押し下げ | files テーブルだけで照合し、`+e.file_id IN (...)` に置き換える。全ファイル一致なら条件を足さず、一致なしなら `AND 0`。source だけなら `COUNT(*)` と `LIMIT` の経路に乗る |
-| 照合に使う列だけ取り出す | logger / thread / message の照合では該当する列だけを `getString` する。全列はページに載る行でだけ作る |
+| 照合に使う列だけ文字列にする | **SQL の `SELECT` は変えていない。** `ResultSet` から `getString` する列を、logger / thread / message の照合に要るものだけに絞る。全列を文字列にするのはページに載る行だけ |
 
 `+` は結合順の選択に使わせないため。付けないと 3 ファイルの索引で files を外側に回し
 `USE TEMP B-TREE FOR LAST TERM OF ORDER BY` が入った（1 ページ目の時間は同じ 17ms）。

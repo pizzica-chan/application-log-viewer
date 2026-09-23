@@ -612,8 +612,12 @@
           <h4>日時書式（日時欄）</h4>
           <p>
             <code>ts</code> で取り出した文字列を、どう読むかの指定です。
-            正規表現ではなく Java の日時パターンを書きます。
+            正規表現ではなく Java の日時パターン（<code>DateTimeFormatter</code>）を書きます。
             上の日時の部品を選ぶと、この欄も一緒に入ります。
+            下のボタンに無い記号が要るときは、
+            <a href="https://docs.oracle.com/javase/8/docs/api/java/time/format/DateTimeFormatter.html#patterns"
+               target="_blank" rel="noopener">Java の記号表</a>を参照してください
+            （オフラインでは開けません）。
             正規表現を先に組み立てたいときは、空のままで構いません（その間は
             <span class="log-format-ui">この行で試す</span> が、取り出せた文字列をそのまま見せます）。
           </p>
