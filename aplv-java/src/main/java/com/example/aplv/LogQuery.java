@@ -33,23 +33,25 @@ import com.example.aplv.LogIndex.EntryRow;
  * 2 レベルで 9ms、3 レベルで 34ms）。どう並べ直すかは統計に基づく SQLite の判断で、
  * {@code idx_entries_level_ts} を引いてソートすることも、{@code idx_entries_ts} を
  * 時刻順に走査してレベルを都度判定することもある。
+ *
+ * <p>{@code --fts} の問い合わせを全 trigram の AND にした（{@link LogIndex#ftsMatchExpr}）ときの
+ * grep 全体（FTS の候補 + 生ログでの最終判定 + 1 ページ目）の実測（100 万行・106 MB・1 ファイル、
+ * Windows 11 / JDK 11、変更前後を交互に 5 回の中央値を 3 ラウンド取った中央値）:
+ * 変更前は {@code detail=full} の索引 + フレーズ、変更後は {@code detail=none} の索引 + AND。
+ * 候補が増えるぶん、多くの語で差はないか数 ms 遅くなる（例: {@code userId=u0000} 11 → 14ms、
+ * {@code orders where id=99} 40 → 46ms、{@code aaaaaa} 0 → 8ms）。候補がもともと多い語では
+ * 速くなることもある（{@code OrderService} 377 → 322ms、候補 91,177 → 105,105 件）。
+ * 候補が最も増えても全行までなので、FTS を使わない全件走査より遅くはならない。
  */
 public final class LogQuery {
 
     /** 正規表現メタ文字。grep がこれらを含まない（=プレーンなリテラル）場合のみ FTS を使う。 */
     private static final String REGEX_META = ".^$*+?()[]{}|\\";
-    /** trigram は 3 文字以上でないと部分一致検索できない。 */
-    private static final int FTS_MIN_LEN = 3;
 
     /** 結果の並び順。{@code idx_entries_ts} と同じ並びなので索引を順に辿れる。 */
     private static final String ORDER_BY = " ORDER BY e.ts_millis, e.file_id, e.line_no";
 
     private LogQuery() {
-    }
-
-    /** grep 文字列が FTS で扱えるプレーンなリテラルか。 */
-    private static boolean isPlainLiteral(String text) {
-        return text.length() >= FTS_MIN_LEN && hasNoRegexMeta(text);
     }
 
     /**
@@ -65,10 +67,6 @@ public final class LogQuery {
         return true;
     }
 
-    /** リテラルを FTS5 のフレーズ（部分一致）クエリ文字列に変換する。 */
-    private static String ftsMatchExpr(String literal) {
-        return "\"" + literal.replace("\"", "\"\"") + "\"";
-    }
 
     /** クエリ結果（総ヒット数 + 現ページ）。 */
     public static final class Result {
@@ -108,12 +106,14 @@ public final class LogQuery {
             where.append(sourceCondition(conn, filter.sourceRe));
         }
 
-        // grep がプレーンなリテラルかつ FTS5 が使えるなら、まず FTS で候補 id を絞り込む。
-        // （最終判定は下の正規表現検証で確定するので結果は同一。）
-        if (filter.grepRe != null && filter.grepText != null
-                && isPlainLiteral(filter.grepText) && LogIndex.ftsAvailable(conn)) {
+        // grep がプレーンなリテラル（3 文字以上）かつ FTS5 が使えるなら、まず FTS で候補 id を
+        // 絞り込む。候補は全 trigram の AND なので余分な行も入るが、最終判定は下の生ログの
+        // 照合で確定するので結果は同一（LogIndex.FTS_SCHEMA）。
+        String ftsExpr = filter.grepRe != null && filter.grepText != null
+                && hasNoRegexMeta(filter.grepText) ? LogIndex.ftsMatchExpr(filter.grepText) : null;
+        if (ftsExpr != null && LogIndex.ftsAvailable(conn)) {
             where.append(" AND e.id IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?)");
-            params.add(ftsMatchExpr(filter.grepText));
+            params.add(ftsExpr);
         }
 
         String whereSql = where.toString();

@@ -342,6 +342,79 @@ class LogIndexTest {
         }
     }
 
+    /**
+     * FTS の候補は全 trigram の AND なので、trigram がそろうだけで連続していない行も候補に入る。
+     * それでも結果は、連続して含む行だけになること（最終判定で落ちる）。
+     * コードポイントで 3 文字未満の grep（絵文字 2 文字は length が 4）でも取りこぼさないこと。
+     */
+    @Test
+    void ftsCandidatesAreVerified(@TempDir Path tmp) throws Exception {
+        String emoji = new String(Character.toChars(0x1F600)) + new String(Character.toChars(0x1F601));
+        Path log = writeLog(tmp, "app.log",
+                "2026-06-15 00:00:01.000[main][INFO][com.example.A] - ABC then DEF12\n"
+                        + "2026-06-15 00:00:02.000[main][INFO][com.example.A] - id=ABCDEF12\n"
+                        + "2026-06-15 00:00:03.000[main][INFO][com.example.A] - smile " + emoji + " here\n");
+
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, true, LogFormatSpec.DEFAULT);
+            assertTrue(LogIndex.ftsAvailable(conn));
+            try (Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery(
+                         "SELECT sql FROM sqlite_master WHERE name = 'entries_fts'")) {
+                assertTrue(rs.next());
+                assertTrue(rs.getString(1).contains("detail=none"), rs.getString(1));
+            }
+
+            QueryFilter f = new QueryFilter();
+            f.grepRe = QueryFilter.compileRegex("ABCDEF");
+            f.grepText = "ABCDEF";
+            LogQuery.Result r = LogQuery.queryLogs(conn, f, 0, 10);
+            assertEquals(1, r.total);
+            assertTrue(r.page.get(0).message.contains("ABCDEF12"));
+
+            QueryFilter e = new QueryFilter();
+            e.grepRe = QueryFilter.compileRegex(emoji);
+            e.grepText = emoji;
+            assertEquals(4, emoji.length());
+            assertEquals(1, LogQuery.queryLogs(conn, e, 0, 10).total, "絵文字 2 文字でも取りこぼさない");
+        }
+    }
+
+    /** 全 trigram の AND を作ること。重複は除き、引用符はエスケープし、3 文字未満は FTS を使わない。 */
+    @Test
+    void ftsMatchExprBuildsTrigramAnd() {
+        assertEquals("\"abc\" AND \"bcd\"", LogIndex.ftsMatchExpr("abcd"));
+        assertEquals("\"aaa\"", LogIndex.ftsMatchExpr("aaaaa"));
+        assertEquals("\"a\"\"b\" AND \"\"\"bc\"", LogIndex.ftsMatchExpr("a\"bc"));
+        String smile = new String(Character.toChars(0x1F600));
+        assertNull(LogIndex.ftsMatchExpr(smile + smile), "コードポイントで 2 文字");
+        assertEquals("\"" + smile + smile + smile + "\"", LogIndex.ftsMatchExpr(smile + smile + smile));
+        assertNull(LogIndex.ftsMatchExpr("ab"));
+    }
+
+    /**
+     * 語の位置を持つ旧スキーマ（{@code detail=full}）の索引でも、AND の問い合わせで同じ候補が
+     * 取れること。既存の索引を作り直さずに使い続けられる前提を守る。
+     */
+    @Test
+    void ftsMatchExprWorksWithOldSchema() throws Exception {
+        try (Connection conn = java.sql.DriverManager.getConnection("jdbc:sqlite::memory:");
+             Statement st = conn.createStatement()) {
+            st.execute("CREATE VIRTUAL TABLE entries_fts USING fts5(body, content='', tokenize='trigram')");
+            st.execute("INSERT INTO entries_fts (rowid, body) VALUES "
+                    + "(1, 'sessionId=ABCDEF12 ok'), (2, 'nothing here')");
+            java.sql.PreparedStatement ps = conn.prepareStatement(
+                    "SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?");
+            ps.setString(1, LogIndex.ftsMatchExpr("abcdef12"));
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(1, rs.getLong(1));
+                assertFalse(rs.next());
+            }
+            ps.close();
+        }
+    }
+
     /** FTS5 無効時も全件スキャンでスタックトレース内 grep が機能すること。 */
     @Test
     void grepWorksWithoutFts(@TempDir Path tmp) throws Exception {

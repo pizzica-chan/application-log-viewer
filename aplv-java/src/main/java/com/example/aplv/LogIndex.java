@@ -16,8 +16,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -222,12 +224,49 @@ public final class LogIndex {
      * 全文検索用 FTS5 テーブル定義。
      *
      * <p>contentless（content=''）で本文の複製を持たず転置インデックスのみ保持し（省容量）、
-     * trigram トークナイザにより 3 文字以上の部分一致検索を高速化する。grep の正規表現リテラルと
-     * 同じ「部分文字列・大文字小文字無視」の挙動を再現でき、rowid を entries.id に一致させて
-     * 候補 id の絞り込みに使う。
+     * trigram トークナイザにより 3 文字以上の部分一致検索を高速化する。rowid を entries.id に
+     * 一致させて候補 id の絞り込みに使う。最終判定は呼び出し側が生ログで行うので、
+     * FTS は候補を取りこぼさなければよい（余分な候補は最終判定で落ちる）。
+     *
+     * <p>{@code detail=none} で語の位置を持たない。位置がないとフレーズ（連続した trigram）の
+     * 問い合わせはできないので、{@link #ftsMatchExpr} は「全 trigram の AND」を作る。
+     * 連続していなくても trigram がそろえば候補になるため候補は増えるが、取りこぼしはない。
+     * {@code columnsize=0} は順位付け（bm25）用の列の長さを持たない（順位付けは使わない）。
+     *
+     * <p>実測（100 万行・106 MB・1 ファイル、Windows 11 / JDK 11、変更前後を交互に
+     * 3 回の中央値を 3 ラウンド取った中央値）: 取り込み 23,685ms → 13,339ms、DB 393 → 202 MB。
+     * {@code columnsize=0} だけでは 23,212ms / 386 MB で、差はばらつきの範囲だった。
+     * 検索側の費用は {@link LogQuery} のコメントを参照。
+     *
+     * <p>AND の問い合わせは {@code detail=full} で作った既存の索引でも動くので、
+     * 既存の索引を作り直さなくてよい（フィンガープリントは変えていない）。
      */
-    private static final String FTS_SCHEMA =
-            "CREATE VIRTUAL TABLE entries_fts USING fts5(body, content='', tokenize='trigram')";
+    private static final String FTS_SCHEMA = "CREATE VIRTUAL TABLE entries_fts USING fts5("
+            + "body, content='', detail=none, columnsize=0, tokenize='trigram')";
+
+    /** trigram で部分一致を探すのに要る最小の文字数（コードポイント）。 */
+    static final int FTS_MIN_CODE_POINTS = 3;
+
+    /**
+     * 部分一致を探す文字列から、FTS5 の問い合わせ（重複を除いた全 trigram の AND）を作る。
+     * 3 文字（コードポイント）未満なら trigram が作れないので {@code null}（FTS を使わない）。
+     *
+     * <p>trigram はコードポイント単位で切る。{@link String#length()}（UTF-16 の文字数）で
+     * 判定すると、絵文字 2 文字のように length が 4 でもコードポイントでは 2 文字の文字列で
+     * FTS を使ってしまい、候補が 0 件になって一致する行を取りこぼす。
+     */
+    static String ftsMatchExpr(String literal) {
+        int[] codePoints = literal.codePoints().toArray();
+        if (codePoints.length < FTS_MIN_CODE_POINTS) {
+            return null;
+        }
+        Set<String> grams = new LinkedHashSet<>();
+        for (int i = 0; i + FTS_MIN_CODE_POINTS <= codePoints.length; i++) {
+            String gram = new String(codePoints, i, FTS_MIN_CODE_POINTS);
+            grams.add("\"" + gram.replace("\"", "\"\"") + "\"");
+        }
+        return String.join(" AND ", grams);
+    }
 
     /** FTS5 全文検索テーブルが存在するか。 */
     public static boolean ftsAvailable(Connection conn) throws SQLException {

@@ -75,6 +75,11 @@ import com.example.aplv.LogIndex.EntryRow;
  * 1,008ms、除外を付けて {@link #MAX_EXAMINED_REQUESTS} の上限に達した場合で 1,360ms）。
  * 範囲探索のクエリで files と JOIN していたときは、並べ替えのために時間窓の全行を集めていたため、
  * 上の 2 行が --fts ありでも 1,326ms / 11,743ms かかっていた（{@link LogIndex#selectEntriesOnly}）。
+ * ここまでの --fts ありの値は、FTS の索引を {@code detail=none}、問い合わせを全 trigram の AND に
+ * 変える前のもの（{@link LogIndex#ftsMatchExpr}）。変えたあとは同じ条件で測り直していない。
+ * 別のデータ（100 万行・106 MB・1 ファイル、時間窓モード、Windows 11 / JDK 11、変更前後を交互に
+ * 5 回の中央値を 3 ラウンド取った中央値）で比べると、起点 2 件で 11ms → 15ms、
+ * 起点 143,958 件（{@code sessionId=}）で 1,633ms → 1,641ms だった。
  */
 public final class SessionTrace {
 
@@ -112,9 +117,6 @@ public final class SessionTrace {
     static final String FORWARD_SQL = LogIndex.selectEntriesOnly()
             + "WHERE e.file_id = ? AND e.thread = ? AND e.ts_millis BETWEEN ? AND ? "
             + "ORDER BY e.ts_millis, e.file_id, e.line_no";
-
-    /** trigram は 3 文字以上でないと部分一致検索できない。 */
-    private static final int FTS_MIN_LEN = 3;
 
     /** 同じリクエストとみなす範囲の決め方。 */
     public enum Mode {
@@ -513,12 +515,14 @@ public final class SessionTrace {
      * 識別子を含みうるエントリを時刻順に返すクエリ。含むかどうかの最終判定は
      * {@link #anchorMatches} で行う。
      *
-     * <p>FTS5 があれば trigram で候補を絞る。trigram は大文字小文字を区別しないので
-     * 候補は取りこぼさず、最終判定で区別する。
+     * <p>FTS5 があれば trigram で候補を絞る。trigram は大文字小文字を区別しないうえ、
+     * 問い合わせは全 trigram の AND なので余分な候補も入るが（{@link LogIndex#ftsMatchExpr}）、
+     * 取りこぼしはなく、最終判定で落とす。
      */
     private PreparedStatement prepareAnchorQuery(Connection conn) throws SQLException {
         StringBuilder sql = new StringBuilder(LogIndex.selectBase());
-        boolean useFts = sessionId.length() >= FTS_MIN_LEN && LogIndex.ftsAvailable(conn);
+        String ftsExpr = LogIndex.ftsMatchExpr(sessionId);
+        boolean useFts = ftsExpr != null && LogIndex.ftsAvailable(conn);
         if (useFts) {
             sql.append("WHERE e.id IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?)");
         }
@@ -526,7 +530,7 @@ public final class SessionTrace {
         PreparedStatement ps = conn.prepareStatement(sql.toString());
         try {
             if (useFts) {
-                ps.setString(1, "\"" + sessionId.replace("\"", "\"\"") + "\"");
+                ps.setString(1, ftsExpr);
             }
         } catch (SQLException e) {
             ps.close();
