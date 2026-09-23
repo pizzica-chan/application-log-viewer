@@ -80,6 +80,8 @@ import com.example.aplv.LogIndex.EntryRow;
  * 別のデータ（100 万行・106 MB・1 ファイル、時間窓モード、Windows 11 / JDK 11、変更前後を交互に
  * 5 回の中央値を 3 ラウンド取った中央値）で比べると、起点 2 件で 11ms → 15ms、
  * 起点 143,958 件（{@code sessionId=}）で 1,633ms → 1,641ms だった。
+ * FTS の構成を変えたときの取り込み・grep の値は {@link LogIndex}（{@code FTS_SCHEMA}）と
+ * {@link LogQuery} のコメントにある。--fts ありの値を新しく引くときはそちらを見ること。
  */
 public final class SessionTrace {
 
