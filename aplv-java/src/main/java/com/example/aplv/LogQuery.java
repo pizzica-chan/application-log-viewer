@@ -41,7 +41,8 @@ import com.example.aplv.LogIndex.EntryRow;
  * 候補が増えるぶん、多くの語で差はないか数 ms 遅くなる（例: {@code userId=u0000} 11 → 14ms、
  * {@code orders where id=99} 40 → 46ms、{@code aaaaaa} 0 → 8ms）。候補がもともと多い語では
  * 速くなることもある（{@code OrderService} 377 → 322ms、候補 91,177 → 105,105 件）。
- * 候補が最も増えても全行までなので、FTS を使わない全件走査より遅くはならない。
+ * 候補は最も増えても全行までだが、FTS の問い合わせの費用が上乗せされるので、FTS を使わない
+ * 全件走査より遅くならないとは言えない（候補が全行に近い語で両者を比べた測定はしていない）。
  */
 public final class LogQuery {
 
