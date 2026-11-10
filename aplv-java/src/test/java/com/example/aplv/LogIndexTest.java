@@ -247,7 +247,7 @@ class LogIndexTest {
         }
         Path log = writeLog(tmp, "app.log", line + "!\n");
         LogFormatSpec spec = LogFormatSpec.of(
-                new CustomLogFormat("bad", "暴走", "^(?<ts>(a+)+b)$", "yyyy"));
+                new CustomLogFormat("bad", "暴走", "^(?<ts>(a*)(a*)(a*)(a*)(a*)(a*)(a*)(a*)b)$", "yyyy"));
         try (Connection conn = LogIndex.openOrCreate(tmp)) {
             IOException e = assertThrows(IOException.class,
                     () -> LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
@@ -644,6 +644,54 @@ class LogIndexTest {
             assertEquals(3, page2.total);
             assertEquals(1, page2.page.size());
             assertEquals("three", page2.page.get(0).message);
+        }
+    }
+
+    /**
+     * 読み飛ばした行に波括弧があっても、保存したサンプルがそのまま読み戻せること。
+     * 以前は最初の } でプレビューが切れ、そのあとに { があると実在しないサンプルが増えた。
+     */
+    @Test
+    void skippedSamplesSurviveBracesAndQuotes(@TempDir Path tmp) throws Exception {
+        String json = "{\"event\":\"boot\",\"ok\":true} tail {\"file_id\":9,\"line_no\":8}";
+        String escaped = "back\\slash \"quoted\" 日本語 }";
+        Path log = writeLog(tmp, "app.log", json + "\n" + escaped + "\n"
+                + "2026-06-15 00:00:02.000[main][INFO][com.example.Foo] - ok\n");
+
+        try (Connection conn = LogIndex.openOrCreate(tmp)) {
+            LogIndex.buildIndex(conn, Collections.singletonList(log), null, false,
+                    LogFormatSpec.DEFAULT);
+            List<SkippedLine> stored = LogIndex.getSkippedLineSamples(conn);
+            assertEquals(2, stored.size());
+            assertEquals(1, stored.get(0).fileId);
+            assertEquals(1, stored.get(0).lineNo);
+            assertEquals(json, stored.get(0).preview);
+            assertEquals(2, stored.get(1).lineNo);
+            assertEquals(escaped, stored.get(1).preview);
+        }
+    }
+
+    /** 一覧用の読み出しは、エントリがどれだけ大きくても上限までしか読まないこと。 */
+    @Test
+    void readEntryRawCachedStopsAtByteLimit(@TempDir Path tmp) throws Exception {
+        StringBuilder body = new StringBuilder(
+                "2026-06-15 00:00:01.000[main][ERROR][com.example.Foo] - failed\n");
+        for (int i = 0; i < 2000; i++) {
+            body.append("\tat com.example.Foo.run(Foo.java:").append(i).append(")\n");
+        }
+        Path log = writeLog(tmp, "app.log", body.toString());
+        LogIndex.EntryRow row = new LogIndex.EntryRow();
+        row.source = log.toString();
+        row.byteOffset = 0;
+        row.endByteOffset = java.nio.file.Files.size(log);
+        java.util.Map<String, java.io.RandomAccessFile> handles = new java.util.HashMap<>();
+        try {
+            String capped = LogIndex.readEntryRawCached(handles, row, 100);
+            assertEquals(body.substring(0, 100), capped);
+            String whole = LogIndex.readEntryRawCached(handles, row, Integer.MAX_VALUE);
+            assertEquals(body.toString(), whole);
+        } finally {
+            LogIndex.closeHandles(handles);
         }
     }
 
