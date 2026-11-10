@@ -529,7 +529,7 @@ class LogFormatStoreTest {
     void detectSurvivesCatastrophicPattern(@TempDir Path tmp) throws IOException {
         String text = "[bad]\n"
                 + "name = 暴走\n"
-                + "pattern = ^(?<ts>(a+)+b)$\n"
+                + "pattern = ^(?<ts>(a*)(a*)(a*)(a*)(a*)(a*)(a*)(a*)b)$\n"
                 + "timestamp = yyyy\n";
         List<CustomLogFormat> customs = new LogFormatStore(write(tmp, text)).load();
         assertEquals(1, customs.size());

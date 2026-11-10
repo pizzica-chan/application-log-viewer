@@ -1,5 +1,10 @@
 package com.example.aplv;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 import java.io.BufferedInputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -710,120 +715,45 @@ public final class LogIndex {
         }
     }
 
+    /**
+     * サンプルを JSON にする。手書きの文字列操作ではなく Gson に任せる。
+     * 以前の手書きの読み取りは最初の <code>}</code> をオブジェクトの終わりとみなしていたので、
+     * 行の中に <code>}</code> があるとプレビューがそこで切れ、<code>{</code> が続くと
+     * 実在しないサンプルが増えていた。書き出す形（キーの名前と並び）は以前と同じ。
+     */
     private static String serializeSkippedSamples(List<SkippedLine> samples) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('[');
-        for (int i = 0; i < samples.size(); i++) {
-            if (i > 0) {
-                sb.append(',');
-            }
-            SkippedLine s = samples.get(i);
-            sb.append("{\"file_id\":").append(s.fileId)
-                    .append(",\"line_no\":").append(s.lineNo)
-                    .append(",\"preview\":").append(jsonString(s.preview)).append('}');
+        JsonArray array = new JsonArray();
+        for (SkippedLine s : samples) {
+            JsonObject o = new JsonObject();
+            o.addProperty("file_id", s.fileId);
+            o.addProperty("line_no", s.lineNo);
+            o.addProperty("preview", s.preview);
+            array.add(o);
         }
-        sb.append(']');
-        return sb.toString();
+        return array.toString();
     }
 
+    /**
+     * {@link #serializeSkippedSamples} の逆。読めなければ空を返す ―― サンプルは
+     * 読み飛ばしの手がかりとして画面に出すだけなので、壊れていても読み込みは止めない
+     * （件数は別のキーに持っている）。
+     */
     private static List<SkippedLine> deserializeSkippedSamples(String json) {
         List<SkippedLine> out = new ArrayList<>();
-        int i = 0;
-        while (i < json.length()) {
-            int objStart = json.indexOf('{', i);
-            if (objStart < 0) {
-                break;
+        try {
+            JsonElement parsed = JsonParser.parseString(json);
+            if (!parsed.isJsonArray()) {
+                return out;
             }
-            int objEnd = json.indexOf('}', objStart);
-            if (objEnd < 0) {
-                break;
+            for (JsonElement element : parsed.getAsJsonArray()) {
+                JsonObject o = element.getAsJsonObject();
+                out.add(new SkippedLine(o.get("file_id").getAsLong(), o.get("line_no").getAsLong(),
+                        o.get("preview").getAsString()));
             }
-            String obj = json.substring(objStart + 1, objEnd);
-            long fileId = extractJsonLong(obj, "file_id");
-            long lineNo = extractJsonLong(obj, "line_no");
-            String preview = extractJsonString(obj, "preview");
-            out.add(new SkippedLine(fileId, lineNo, preview));
-            i = objEnd + 1;
+        } catch (RuntimeException e) {
+            return new ArrayList<>();
         }
         return out;
-    }
-
-    private static long extractJsonLong(String obj, String key) {
-        String needle = "\"" + key + "\":";
-        int idx = obj.indexOf(needle);
-        if (idx < 0) {
-            return 0L;
-        }
-        int start = idx + needle.length();
-        int end = start;
-        while (end < obj.length() && Character.isDigit(obj.charAt(end))) {
-            end++;
-        }
-        return Long.parseLong(obj.substring(start, end));
-    }
-
-    private static String extractJsonString(String obj, String key) {
-        String needle = "\"" + key + "\":\"";
-        int idx = obj.indexOf(needle);
-        if (idx < 0) {
-            return "";
-        }
-        int start = idx + needle.length();
-        StringBuilder sb = new StringBuilder();
-        for (int i = start; i < obj.length(); i++) {
-            char c = obj.charAt(i);
-            if (c == '\\' && i + 1 < obj.length()) {
-                char next = obj.charAt(i + 1);
-                if (next == 'n') {
-                    sb.append('\n');
-                } else if (next == 'r') {
-                    sb.append('\r');
-                } else if (next == 't') {
-                    sb.append('\t');
-                } else if (next == '\\' || next == '"') {
-                    sb.append(next);
-                } else {
-                    sb.append(next);
-                }
-                i++;
-                continue;
-            }
-            if (c == '"') {
-                break;
-            }
-            sb.append(c);
-        }
-        return sb.toString();
-    }
-
-    private static String jsonString(String value) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('"');
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            switch (c) {
-                case '\\':
-                    sb.append("\\\\");
-                    break;
-                case '"':
-                    sb.append("\\\"");
-                    break;
-                case '\n':
-                    sb.append("\\n");
-                    break;
-                case '\r':
-                    sb.append("\\r");
-                    break;
-                case '\t':
-                    sb.append("\\t");
-                    break;
-                default:
-                    sb.append(c);
-                    break;
-            }
-        }
-        sb.append('"');
-        return sb.toString();
     }
 
     private static void parseFileInto(long fileId, Path path, BlockingQueue<List<Row>> queue,
@@ -955,10 +885,17 @@ public final class LogIndex {
      * <p>1 ページ／1 クエリ内で同じログファイルを何度も開き直さないための共通処理。
      * 読み取り失敗時は空文字を返す（1 件の欠落で一覧全体を落とさない）。
      *
-     * @param handles ログファイルパス → オープン済みハンドル。呼び出し側が
-     *                {@link #closeHandles} で解放する
+     * <p>読むのは先頭の {@code maxBytes} バイトまで。一覧は 1 行あたり数千文字しか返さないので、
+     * エントリ全体を確保しない（ヘッダ 1 行のあとに解析できない行が延々と続くファイルでは
+     * 1 エントリが数百 MB になりえ、一覧を開くだけでメモリが足りなくなる）。途中で切ると
+     * 末尾の 1 文字が壊れることがあるので、呼び出し側は必要な文字数より余分に読んで切り詰める。
+     *
+     * @param handles  ログファイルパス → オープン済みハンドル。呼び出し側が
+     *                 {@link #closeHandles} で解放する
+     * @param maxBytes 読み出すバイト数の上限
      */
-    static String readEntryRawCached(Map<String, RandomAccessFile> handles, EntryRow e) {
+    static String readEntryRawCached(Map<String, RandomAccessFile> handles, EntryRow e,
+            int maxBytes) {
         try {
             RandomAccessFile file = handles.get(e.source);
             if (file == null) {
@@ -970,7 +907,7 @@ public final class LogIndex {
                 return "";
             }
             file.seek(e.byteOffset);
-            byte[] buf = new byte[(int) Math.min(size, Integer.MAX_VALUE)];
+            byte[] buf = new byte[(int) Math.min(size, maxBytes)];
             file.readFully(buf);
             return new String(buf, StandardCharsets.UTF_8);
         } catch (IOException ex) {

@@ -96,4 +96,22 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      JDK 9 以降でビルドするときは、Java 8 の API だけを見てコンパイルする。
+      source / target の指定だけだと、Java 9 以降で増えた API を使ってもビルドは通り、
+      実行時（Docker の実行イメージは JRE 8）に初めて NoSuchMethodError になる。
+      JDK 8 の javac は release オプションを知らないので、9 以降でだけ有効にする。
+    -->
+    <profile>
+      <id>release-8-on-newer-jdk</id>
+      <activation>
+        <jdk>[9,)</jdk>
+      </activation>
+      <properties>
+        <maven.compiler.release>8</maven.compiler.release>
+      </properties>
+    </profile>
+  </profiles>
 </project>

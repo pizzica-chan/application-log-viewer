@@ -300,8 +300,10 @@ class CustomLogFormatTest {
     @Test
     void abortsCatastrophicBacktracking() {
         CustomLogFormat f = new CustomLogFormat("bad", "暴走する書式",
-                "^(?<ts>(a+)+b)$", TS);
-        // 20 文字でも後戻りは 2^20 通りに広がり、打ち切り基準を十分に超える。
+                "^(?<ts>(a*)(a*)(a*)(a*)(a*)(a*)(a*)(a*)b)$", TS);
+        // 8 個の a* に 20 文字を割り振る後戻りは数百万通りあり、打ち切り基準を十分に超える。
+        // (a+)+b は使わない。JDK 9 以降は同じ位置の繰り返しを覚えて後戻りを省くため、
+        // 打ち切りに届かず、JDK 21 ではこの試験が落ちていた。
         // これ以上長くすると、打ち切りを外す変異を入れたときに試験が
         // 「赤くなる」ではなく「返ってこない」になり、壊れたことに気づけない。
         StringBuilder line = new StringBuilder();
@@ -531,7 +533,7 @@ class CustomLogFormatTest {
     @Test
     void matchOnlyPathsAreAlsoBudgeted() {
         CustomLogFormat f = new CustomLogFormat("bad2", "暴走する書式",
-                "^(?<ts>(a+)+b)$", TS);
+                "^(?<ts>(a*)(a*)(a*)(a*)(a*)(a*)(a*)(a*)b)$", TS);
         StringBuilder line = new StringBuilder();
         for (int i = 0; i < 20; i++) {
             line.append('a');
